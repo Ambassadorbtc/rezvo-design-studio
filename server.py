@@ -636,16 +636,16 @@ async def generate_design(
     if has_image and pil_img and is_scan:
         log.info("TRUE SCANNER MODE: Using screenshot as visual + interactive overlay")
         
-        # Create compressed JPEG data URL of the screenshot
+        # Create high-quality data URL of the screenshot
         buf = io.BytesIO()
-        # Resize if needed to keep reasonable size
         scan_img = pil_img.copy()
-        max_dim = 1600
+        # Keep full resolution for quality — cap at 3000px only for truly massive images
+        max_dim = 3000
         if scan_img.width > max_dim or scan_img.height > max_dim:
             scan_img.thumbnail((max_dim, max_dim), Image.LANCZOS)
-        scan_img.save(buf, format="JPEG", quality=88, optimize=True)
+        scan_img.save(buf, format="PNG", optimize=True)
         scan_b64 = base64.b64encode(buf.getvalue()).decode()
-        scan_data_url = f"data:image/jpeg;base64,{scan_b64}"
+        scan_data_url = f"data:image/png;base64,{scan_b64}"
         
         w, h = DEVICE_SIZES.get(device, (1024, 768))
         
@@ -801,8 +801,8 @@ async def export_svg(html: str = Form(...), name: str = Form("export"), device: 
 @app.post("/api/export/png")
 async def export_png(html: str = Form(...), name: str = Form("export"), device: str = Form("desktop")):
     """Export as PNG by extracting the background image from scanner HTML."""
-    # For scanner mode, the PNG is just the screenshot image
-    bg_match = re.search(r"background-image:\s*url\('data:image/jpeg;base64,([^']+)'\)", html)
+    # For scanner mode, extract the screenshot image
+    bg_match = re.search(r"background-image:\s*url\('data:image/[^;]+;base64,([^']+)'\)", html)
     if bg_match:
         img_bytes = base64.b64decode(bg_match.group(1))
         return HTMLResponse(content=img_bytes, media_type="image/png",
