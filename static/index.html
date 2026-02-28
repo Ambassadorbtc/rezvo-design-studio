@@ -472,11 +472,22 @@ async function handleGenerate() {
   addChatMessage('user', prompt || 'Replicate this design', state.uploadData?.dataUrl);
   state.generating = true; state.progress = 0;
   document.getElementById('promptInput').value = '';
-  updateSendBtn(); renderCanvas(); renderChatMessages();
+  updateSendBtn();
+  centerOnPlaceholder();
+  renderCanvas(); renderChatMessages();
 
   const progressTimer = setInterval(() => {
     state.progress = Math.min(state.progress + Math.random() * 6, 92);
-    renderChatMessages(); renderCanvas();
+    renderChatMessages();
+    // Only update progress bar elements, don't rebuild entire canvas
+    const progFill = document.querySelector('.wireframe-placeholder .progress-bar .fill');
+    const progSvg = document.querySelector('.wireframe-placeholder svg rect:last-of-type');
+    const progLabel = document.querySelector('.wireframe-placeholder .label');
+    if (progFill) progFill.style.width = state.progress + '%';
+    if (progLabel) {
+      const prov = PROVIDER_META[state.activeProvider];
+      progLabel.innerHTML = `<div class="pulse-dot" style="background:${prov.color}"></div> ${prov.label} generating... ${Math.round(state.progress)}%`;
+    }
   }, 600);
 
   try {
@@ -491,8 +502,13 @@ async function handleGenerate() {
     }
     const resp = await fetch('/api/generate', { method: 'POST', body: formData });
     clearInterval(progressTimer); state.progress = 100;
-    if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Generation failed'); }
-    const data = await resp.json();
+    if (!resp.ok) {
+      let errMsg = 'Generation failed';
+      try { const err = await resp.json(); errMsg = err.detail || errMsg; } catch(e) { errMsg = `Server error (${resp.status}): ${await resp.text().then(t => t.slice(0, 200)).catch(() => 'Unknown')}`; }
+      throw new Error(errMsg);
+    }
+    let data;
+    try { data = await resp.json(); } catch(e) { throw new Error('Invalid response from server — not JSON'); }
     const project = state.projects[state.activeProject];
     const pMeta = PROVIDER_META[state.activeProvider];
     project.screens.push({
@@ -539,18 +555,30 @@ function renderCanvas() {
     const x = col * (dev.w + 80), y = row * (dev.h + 100);
     const prov = PROVIDER_META[state.activeProvider];
     html += `<div class="wireframe-placeholder" style="left:${x}px;top:${y}px;">
-      <div class="label"><div class="pulse-dot" style="background:${prov.color}"></div> ${prov.label} generating... ${Math.round(state.progress)}%</div>
-      <div class="wireframe-box">
-        <svg width="400" height="300" viewBox="0 0 ${dev.w} ${dev.h}" style="border-radius:10px;overflow:hidden;display:block;">
+      <div class="label" style="font-size:14px;margin-bottom:10px;"><div class="pulse-dot" style="background:${prov.color}"></div> ${prov.label} generating... ${Math.round(state.progress)}%</div>
+      <div class="wireframe-box" style="width:${dev.w}px;height:${dev.h}px;">
+        <svg width="${dev.w}" height="${dev.h}" viewBox="0 0 ${dev.w} ${dev.h}" style="border-radius:10px;overflow:hidden;display:block;">
           <rect width="${dev.w}" height="${dev.h}" fill="#1a1a2e" rx="8"/>
           <rect x="0" y="0" width="${dev.w}" height="${dev.h*0.07}" fill="#16213e"/>
-          <rect x="${dev.w*0.03}" y="${dev.h*0.02}" width="${dev.w*0.15}" height="${dev.h*0.03}" rx="4" fill="#0f3460"/>
-          <rect x="${dev.w*0.03}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.25}" rx="8" fill="#16213e" opacity="0.7"/>
-          <rect x="${dev.w*0.52}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.12}" rx="8" fill="#16213e" opacity="0.7"/>
-          <rect x="0" y="${dev.h-4}" width="${dev.w*(state.progress/100)}" height="4" fill="${prov.color}" rx="2"/>
+          <rect x="${dev.w*0.03}" y="${dev.h*0.015}" width="${dev.w*0.15}" height="${dev.h*0.04}" rx="6" fill="#0f3460"/>
+          <rect x="${dev.w*0.78}" y="${dev.h*0.015}" width="${dev.w*0.08}" height="${dev.h*0.04}" rx="6" fill="#0f3460"/>
+          <rect x="${dev.w*0.88}" y="${dev.h*0.015}" width="${dev.w*0.08}" height="${dev.h*0.04}" rx="6" fill="#0f3460"/>
+          ${[0,1,2,3].map(i => `<rect x="${dev.w*(0.03+i*0.235)}" y="${dev.h*0.1}" width="${dev.w*0.22}" height="${dev.h*0.08}" rx="8" fill="#16213e" opacity="0.8"/>`).join('')}
+          <rect x="${dev.w*0.03}" y="${dev.h*0.22}" width="${dev.w*0.55}" height="${dev.h*0.55}" rx="10" fill="#16213e" opacity="0.6"/>
+          <rect x="${dev.w*0.6}" y="${dev.h*0.22}" width="${dev.w*0.37}" height="${dev.h*0.55}" rx="10" fill="#16213e" opacity="0.5"/>
+          ${[0,1,2,3].map(i => `<rect x="${dev.w*(0.04+i*0.13)}" y="${dev.h*0.26}" width="${dev.w*0.12}" height="${dev.h*0.12}" rx="6" fill="#0f3460" opacity="0.7"/>`).join('')}
+          <rect x="${dev.w*0.62}" y="${dev.h*0.26}" width="${dev.w*0.33}" height="${dev.h*0.04}" rx="4" fill="#0f3460" opacity="0.5"/>
+          <rect x="${dev.w*0.62}" y="${dev.h*0.32}" width="${dev.w*0.33}" height="${dev.h*0.04}" rx="4" fill="#0f3460" opacity="0.4"/>
+          <rect x="${dev.w*0.62}" y="${dev.h*0.38}" width="${dev.w*0.33}" height="${dev.h*0.04}" rx="4" fill="#0f3460" opacity="0.4"/>
+          <rect x="${dev.w*0.62}" y="${dev.h*0.6}" width="${dev.w*0.33}" height="${dev.h*0.07}" rx="8" fill="#1e3a5f" opacity="0.8"/>
+          <rect x="0" y="${dev.h*0.85}" width="${dev.w}" height="${dev.h*0.15}" fill="#16213e" opacity="0.5"/>
+          <rect x="0" y="${dev.h-6}" width="${dev.w*(state.progress/100)}" height="6" fill="${prov.color}" rx="3"/>
+          <rect x="0" y="${dev.h*(state.progress/100)}" width="${dev.w}" height="3" fill="${prov.color}" opacity="0.5">
+            <animate attributeName="opacity" values="0.5;0.15;0.5" dur="1.5s" repeatCount="indefinite"/>
+          </rect>
         </svg>
       </div>
-      <div class="progress-bar"><div class="fill" style="width:${state.progress}%;background:${prov.color};"></div></div>
+      <div class="progress-bar" style="margin-top:10px;height:6px;"><div class="fill" style="width:${state.progress}%;background:${prov.color};"></div></div>
     </div>`;
   }
   inner.innerHTML = html;
@@ -577,13 +605,23 @@ function exportSelected() {
   a.download = s.name.replace(/\s+/g, '-').toLowerCase() + '.html'; a.click();
 }
 
-function canvasWheel(e) { e.preventDefault(); state.zoom = Math.max(0.1, Math.min(3, state.zoom + (e.deltaY > 0 ? -0.05 : 0.05))); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; renderCanvas(); }
+function canvasWheel(e) { e.preventDefault(); state.zoom = Math.max(0.1, Math.min(3, state.zoom + (e.deltaY > 0 ? -0.05 : 0.05))); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; updateCanvasTransform(); }
 function canvasMouseDown(e) { if (state.tool === 'move' || e.button === 1) { state.isPanning = true; state.panStart = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y }; document.getElementById('canvas').classList.add('panning'); } }
-function canvasMouseMove(e) { if (state.isPanning) { state.pan = { x: e.clientX - state.panStart.x, y: e.clientY - state.panStart.y }; renderCanvas(); } }
+function canvasMouseMove(e) { if (state.isPanning) { state.pan = { x: e.clientX - state.panStart.x, y: e.clientY - state.panStart.y }; updateCanvasTransform(); } }
 function canvasMouseUp() { state.isPanning = false; document.getElementById('canvas').classList.remove('panning'); }
 function setTool(t) { state.tool = t; document.getElementById('toolSelect').className = t==='select'?'active':''; document.getElementById('toolMove').className = t==='move'?'active':''; document.getElementById('canvas').classList.toggle('moving', t==='move'); }
-function zoomBy(d) { state.zoom = Math.max(0.1, Math.min(3, state.zoom + d)); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; renderCanvas(); }
-function resetView() { state.zoom = 0.4; state.pan = { x: 60, y: 60 }; document.getElementById('zoomVal').textContent = '40%'; renderCanvas(); }
+function zoomBy(d) { state.zoom = Math.max(0.1, Math.min(3, state.zoom + d)); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; updateCanvasTransform(); }
+function resetView() { state.zoom = 0.4; state.pan = { x: 60, y: 60 }; document.getElementById('zoomVal').textContent = '40%'; updateCanvasTransform(); }
+function updateCanvasTransform() { const inner = document.getElementById('canvas-inner'); if (inner) inner.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`; }
+function centerOnPlaceholder() {
+  const dev = DEVICES[state.device];
+  const canvasArea = document.getElementById('canvas-area');
+  if (!canvasArea) return;
+  const cw = canvasArea.clientWidth, ch = canvasArea.clientHeight;
+  state.zoom = Math.min(0.6, (cw - 80) / dev.w, (ch - 80) / dev.h);
+  state.pan = { x: (cw - dev.w * state.zoom) / 2, y: (ch - dev.h * state.zoom) / 2 };
+  document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
+}
 
 // ── Modals ──
 let newProjectDevice = 'tablet';
