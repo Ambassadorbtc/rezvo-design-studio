@@ -625,13 +625,18 @@ async def generate_design(
         is_scan = True
     else:
         p = prompt.lower().strip().rstrip('.')
-        # Exact matches
-        if p in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate',
-                 'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
-            is_scan = True
-        # Fuzzy matches — if the prompt is basically saying "scan/copy this exactly"
-        elif any(kw in p for kw in ('scan', 'copy this', 'pixel perfect', 'pixel-perfect', 'no placeholder', 'no place holder', 'no guessing', 'exactly', 'replicate', 'clone')):
-            is_scan = True
+        # Only trigger scanner for SHORT commands that clearly mean "copy this exactly"
+        # Long prompts with design instructions should go to AI code generation
+        if len(p) < 80:
+            # Exact matches
+            if p in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate',
+                     'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
+                is_scan = True
+            # Fuzzy matches — only for short prompts
+            elif any(kw in p for kw in ('scan', 'copy this', 'pixel perfect', 'pixel-perfect', 
+                                         'no placeholder', 'no place holder', 'no guessing', 
+                                         'replicate', 'clone')):
+                is_scan = True
     
     # ═══ TRUE SCANNER MODE ═══
     # For scan commands with a screenshot: use the screenshot AS the visual
