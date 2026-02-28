@@ -216,12 +216,12 @@ async def detect_image_regions(gemini_key: str, img_b64: str, img_type: str, img
 # STEP 2: PILLOW CROPS ACTUAL PIXELS
 # ═══════════════════════════════════════════════════════════
 
-def crop_detected_regions(img: Image.Image, regions: list) -> list:
-    """Crop each detected region from the screenshot, return list with base64 data."""
+def crop_detected_regions(img: Image.Image, regions: list, max_images: int = 20) -> list:
+    """Crop each detected region from the screenshot, return list with URLs and base64."""
     iw, ih = img.size
     results = []
     
-    for i, region in enumerate(regions):
+    for i, region in enumerate(regions[:max_images]):
         box = region["box_pixels"]  # [x1, y1, x2, y2] in actual pixels
         
         x_min = max(0, min(int(box[0]), iw - 1))
@@ -232,14 +232,14 @@ def crop_detected_regions(img: Image.Image, regions: list) -> list:
         # Crop
         cropped = img.crop((x_min, y_min, x_max, y_max))
         
-        # Save to file for serving
-        crop_id = f"{uuid.uuid4().hex[:8]}.png"
+        # Save full quality for serving via URL
+        crop_id = f"{uuid.uuid4().hex[:8]}.jpg"
         crop_path = EXTRACTED_DIR / crop_id
-        cropped.save(crop_path, format="PNG", optimize=True)
+        cropped.save(crop_path, format="JPEG", quality=85, optimize=True)
         
-        # Also create base64 for embedding
+        # Create base64 for embedding in final HTML (JPEG, compressed)
         buf = io.BytesIO()
-        cropped.save(buf, format="PNG", optimize=True)
+        cropped.save(buf, format="JPEG", quality=80, optimize=True)
         b64 = base64.b64encode(buf.getvalue()).decode()
         
         results.append({
@@ -247,8 +247,8 @@ def crop_detected_regions(img: Image.Image, regions: list) -> list:
             "label": region["label"],
             "box_pixels": [x_min, y_min, x_max, y_max],
             "size": [x_max - x_min, y_max - y_min],
-            "path": f"/extracted/{crop_id}",
-            "data_url": f"data:image/png;base64,{b64}",
+            "url": f"/extracted/{crop_id}",
+            "data_url": f"data:image/jpeg;base64,{b64}",
         })
         
         log.info(f"  Cropped [{i}] '{region['label']}': {x_max-x_min}x{y_max-y_min}px")
@@ -293,14 +293,15 @@ COMPLETENESS:
 
 
 def build_image_manifest(extracted_images: list) -> str:
-    """Build a text manifest of extracted images for the code generation prompt."""
+    """Build a text manifest of extracted images for the code generation prompt.
+    Uses server URLs (not base64) to keep prompt size manageable."""
     if not extracted_images:
         return "No photographs were detected in this screenshot."
     
     lines = []
     for img in extracted_images:
         lines.append(f'  - Image {img["index"]}: "{img["label"]}" ({img["size"][0]}x{img["size"][1]}px)')
-        lines.append(f'    Use: <img src="{img["data_url"]}" alt="{img["label"]}" style="object-fit:cover;">')
+        lines.append(f'    Use: <img src="{img["url"]}" alt="{img["label"]}" style="object-fit:cover;">')
     return "\n".join(lines)
 
 
@@ -486,8 +487,13 @@ Output ONLY raw HTML."""
         result["detection_used"] = bool(has_image)
         result["detection_method"] = "gemini+opencv" if has_image else "none"
         
+        # Post-process: replace server URLs with base64 data URLs for self-contained HTML
         if extracted_images:
-            result["extracted_images"] = [{"label": img["label"], "path": img["path"], "size": img["size"]} for img in extracted_images]
+            html = result["html"]
+            for img in extracted_images:
+                html = html.replace(img["url"], img["data_url"])
+            result["html"] = html
+            result["extracted_images"] = [{"label": img["label"], "url": img["url"], "size": img["size"]} for img in extracted_images]
         
         log.info(f"  Done! {len(extracted_images)} images embedded, provider={provider}")
         return result
