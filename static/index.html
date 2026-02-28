@@ -384,7 +384,16 @@ function saveProjectsDB() {
   });
 }
 
-function persist() { saveProjectsDB(); }
+async function persist() { 
+  try { 
+    await saveProjectsDB(); 
+    console.log('Saved', state.projects.length, 'projects to IndexedDB'); 
+  } catch(e) { 
+    console.error('Save failed:', e);
+    // Fallback: try localStorage (may fail for large scans but at least saves small ones)
+    try { localStorage.setItem('rezvo_projects', JSON.stringify(state.projects)); } catch(e2) {}
+  }
+}
 function persistKeys() { localStorage.setItem('rezvo_keys', JSON.stringify(state.keys)); localStorage.setItem('rezvo_provider', state.activeProvider); }
 
 function updateProviderBadge() {
