@@ -62,7 +62,7 @@ async def detect_image_regions(gemini_key: str, img_b64: str, img_type: str) -> 
     """Use Gemini to detect photograph/image regions and return bounding boxes."""
     async with httpx.AsyncClient(timeout=60.0) as c:
         r = await c.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}",
             headers={"Content-Type": "application/json"},
             json={
                 "contents": [{
@@ -261,14 +261,14 @@ async def call_gemini(api_key, system, user_text, img_b64, img_type):
         parts.append({"inline_data": {"mime_type": img_type, "data": img_b64}})
     parts.append({"text": user_text})
     async with httpx.AsyncClient(timeout=180.0) as c:
-        r = await c.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+        r = await c.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
             headers={"Content-Type": "application/json"},
             json={"system_instruction": {"parts": [{"text": system}]}, "contents": [{"parts": parts}],
                   "generationConfig": {"maxOutputTokens": 16000}})
         if r.status_code != 200:
             raise HTTPException(r.status_code, f"Gemini: {r.json().get('error',{}).get('message', r.text)}")
         d = r.json()
-        return {"html": clean_html(d["candidates"][0]["content"]["parts"][0]["text"]), "model": "gemini-2.0-flash", "usage": d.get("usageMetadata")}
+        return {"html": clean_html(d["candidates"][0]["content"]["parts"][0]["text"]), "model": "gemini-2.5-flash", "usage": d.get("usageMetadata")}
 
 
 async def call_openai(api_key, system, user_text, img_b64, img_type):
