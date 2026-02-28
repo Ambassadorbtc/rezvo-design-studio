@@ -301,6 +301,8 @@ def build_scanner_html(img_data_url: str, elements: list, target_w: int, target_
     background-image: url('{img_data_url}');
     background-size: 100% 100%;
     background-repeat: no-repeat;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
     border-radius: 16px;
     overflow: hidden;
     box-shadow: 0 25px 60px rgba(0,0,0,0.5);
@@ -636,18 +638,16 @@ async def generate_design(
     if has_image and pil_img and is_scan:
         log.info("TRUE SCANNER MODE: Using screenshot as visual + interactive overlay")
         
-        # Create high-quality data URL of the screenshot
+        # FULL RESOLUTION — no resizing, no compression, original pixels
         buf = io.BytesIO()
         scan_img = pil_img.copy()
-        # Keep full resolution for quality — cap at 3000px only for truly massive images
-        max_dim = 3000
-        if scan_img.width > max_dim or scan_img.height > max_dim:
-            scan_img.thumbnail((max_dim, max_dim), Image.LANCZOS)
-        scan_img.save(buf, format="PNG", optimize=True)
+        scan_img.save(buf, format="PNG")
         scan_b64 = base64.b64encode(buf.getvalue()).decode()
         scan_data_url = f"data:image/png;base64,{scan_b64}"
         
-        w, h = DEVICE_SIZES.get(device, (1024, 768))
+        # Use ACTUAL image dimensions, not device preset
+        w, h = scan_img.width, scan_img.height
+        log.info(f"Scanner: Full resolution {w}x{h} PNG ({len(scan_b64) // 1024}KB)")
         
         # Get interactive elements from Gemini
         detection_key = gemini_key or (api_key if provider == "gemini" else "")
@@ -656,12 +656,11 @@ async def generate_design(
         # Build the scanner HTML
         html = build_scanner_html(scan_data_url, elements, w, h)
         
-        # Save scan for Figma plugin access
+        # Save scan for Figma plugin access — PNG, full resolution
         scan_id = uuid.uuid4().hex[:10]
-        # Save the screenshot image for the plugin to fetch
-        scan_img_id = f"scan_{scan_id}.jpg"
+        scan_img_id = f"scan_{scan_id}.png"
         scan_img_buf = io.BytesIO()
-        scan_img.save(scan_img_buf, format="JPEG", quality=92)
+        scan_img.save(scan_img_buf, format="PNG")
         (EXTRACTED_DIR / scan_img_id).write_bytes(scan_img_buf.getvalue())
         
         scan_meta = {
