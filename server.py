@@ -656,6 +656,22 @@ async def generate_design(
         # Build the scanner HTML
         html = build_scanner_html(scan_data_url, elements, w, h)
         
+        # Save scan for Figma plugin access
+        scan_id = uuid.uuid4().hex[:10]
+        # Save the screenshot image for the plugin to fetch
+        scan_img_id = f"scan_{scan_id}.jpg"
+        scan_img_buf = io.BytesIO()
+        scan_img.save(scan_img_buf, format="JPEG", quality=92)
+        (EXTRACTED_DIR / scan_img_id).write_bytes(scan_img_buf.getvalue())
+        
+        scan_meta = {
+            "id": scan_id, "name": prompt or "Scanner", "device": device,
+            "elements": elements, "image_id": scan_img_id,
+            "date": __import__('datetime').datetime.now().isoformat(),
+        }
+        (SCANS_DIR / f"{scan_id}.json").write_text(json.dumps(scan_meta), encoding="utf-8")
+        log.info(f"Scan saved: {scan_id} ({len(elements)} elements)")
+        
         return {
             "html": html,
             "provider": "scanner",
@@ -663,6 +679,7 @@ async def generate_design(
             "images_detected": len(elements),
             "detection_used": True,
             "detection_method": "true-scanner",
+            "scan_id": scan_id,
             "usage": {"mode": "scanner", "elements": len(elements)},
         }
     
@@ -717,6 +734,13 @@ Output ONLY raw HTML."""
     except Exception as e: raise HTTPException(500, str(e))
 
 
+@app.get("/plugin/rezvo-scanner-plugin.zip")
+async def download_plugin():
+    path = Path("static/rezvo-scanner-plugin.zip")
+    if not path.exists(): raise HTTPException(404, "Plugin not found")
+    return FileResponse(path, media_type="application/zip", filename="rezvo-scanner-plugin.zip")
+
+
 @app.get("/")
 async def index():
     return FileResponse("static/index.html")
@@ -733,6 +757,61 @@ async def get_preview(preview_id: str):
     path = PREVIEWS_DIR / f"{preview_id}.html"
     if not path.exists(): raise HTTPException(404, "Preview not found")
     return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+SCANS_DIR = Path("scans")
+SCANS_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/api/save-scan")
+async def save_scan(scan_id: str = Form(...), name: str = Form(""), device: str = Form("desktop"),
+                    elements: str = Form("[]"), image_id: str = Form("")):
+    """Save scan metadata for Figma plugin access."""
+    scan_data = {
+        "id": scan_id, "name": name, "device": device,
+        "elements": json.loads(elements) if elements else [],
+        "image_id": image_id,
+        "date": __import__('datetime').datetime.now().isoformat(),
+    }
+    (SCANS_DIR / f"{scan_id}.json").write_text(json.dumps(scan_data), encoding="utf-8")
+    return {"ok": True, "id": scan_id}
+
+
+@app.get("/api/scans")
+async def list_scans():
+    """List recent scans for Figma plugin."""
+    scans = []
+    for f in sorted(SCANS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)[:20]:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            scans.append({
+                "id": data["id"],
+                "name": data.get("name", "Scan"),
+                "device": data.get("device", "desktop"),
+                "elements": len(data.get("elements", [])),
+                "date": data.get("date", ""),
+                "thumbnail": f"/extracted/{data['image_id']}" if data.get("image_id") else "",
+            })
+        except: pass
+    return {"scans": scans}
+
+
+@app.get("/api/figma-export/{scan_id}")
+async def figma_export(scan_id: str):
+    """Return scan data formatted for Figma plugin import."""
+    scan_path = SCANS_DIR / f"{scan_id}.json"
+    if not scan_path.exists():
+        raise HTTPException(404, "Scan not found")
+    
+    data = json.loads(scan_path.read_text(encoding="utf-8"))
+    w, h = DEVICE_SIZES.get(data.get("device", "desktop"), (1440, 900))
+    
+    return {
+        "name": data.get("name", "Rezvo Scan"),
+        "width": w, "height": h,
+        "image_url": f"/extracted/{data['image_id']}" if data.get("image_id") else "",
+        "elements": data.get("elements", []),
+    }
 
 
 @app.post("/api/export/svg")

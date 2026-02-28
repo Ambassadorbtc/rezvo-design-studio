@@ -1,0 +1,185 @@
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; background: #1a1a2e; color: #e2e8f0; padding: 16px; min-height: 100%; }
+  h2 { font-size: 16px; font-weight: 700; margin-bottom: 4px; color: #fff; }
+  .subtitle { font-size: 11px; color: #94a3b8; margin-bottom: 16px; }
+  .brand { color: #22c55e; }
+  
+  .input-group { margin-bottom: 12px; }
+  label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; display: block; }
+  input { width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; outline: none; }
+  input:focus { border-color: #22c55e; }
+  input::placeholder { color: #475569; }
+  
+  .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: #22c55e; color: #000; }
+  .btn-primary:hover { background: #16a34a; }
+  .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  .btn-secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; margin-top: 8px; }
+  .btn-secondary:hover { background: #334155; }
+  
+  .status { font-size: 11px; padding: 8px; border-radius: 6px; margin-top: 12px; display: none; }
+  .status.info { display: block; background: #0c1929; color: #60a5fa; border: 1px solid #1e3a5f; }
+  .status.success { display: block; background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .status.error { display: block; background: #2d0808; color: #f87171; border: 1px solid #7f1d1d; }
+  
+  .scan-list { margin-top: 12px; }
+  .scan-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s; }
+  .scan-item:hover { border-color: #22c55e; background: #162032; }
+  .scan-thumb { width: 48px; height: 36px; border-radius: 4px; background: #1e293b; object-fit: cover; }
+  .scan-info { flex: 1; }
+  .scan-name { font-size: 12px; font-weight: 500; }
+  .scan-meta { font-size: 10px; color: #64748b; }
+  
+  .divider { border: none; border-top: 1px solid #1e293b; margin: 16px 0; }
+  .loading { text-align: center; padding: 20px; color: #64748b; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h2><span class="brand">REZVO</span> Scanner</h2>
+  <p class="subtitle">Import scans directly into Figma</p>
+  
+  <div class="input-group">
+    <label>Studio URL</label>
+    <input type="text" id="studioUrl" value="https://studio.rezvo.app" placeholder="https://studio.rezvo.app">
+  </div>
+  
+  <button class="btn btn-primary" id="loadBtn" onclick="loadScans()">Load Recent Scans</button>
+  
+  <div id="status" class="status"></div>
+  
+  <div id="scanList" class="scan-list"></div>
+  
+  <hr class="divider">
+  
+  <div class="input-group">
+    <label>Or paste a Preview URL</label>
+    <input type="text" id="previewUrl" placeholder="https://studio.rezvo.app/preview/abc123">
+  </div>
+  <button class="btn btn-secondary" onclick="importFromUrl()">Import from URL</button>
+
+<script>
+  const $ = id => document.getElementById(id);
+  
+  function setStatus(msg, type) {
+    const el = $('status');
+    el.textContent = msg;
+    el.className = `status ${type}`;
+  }
+  
+  async function loadScans() {
+    const base = $('studioUrl').value.replace(/\/$/, '');
+    setStatus('Loading scans...', 'info');
+    $('loadBtn').disabled = true;
+    
+    try {
+      const resp = await fetch(`${base}/api/scans`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      const data = await resp.json();
+      
+      if (!data.scans || data.scans.length === 0) {
+        setStatus('No scans found. Go to studio.rezvo.app and scan a screenshot first.', 'info');
+        return;
+      }
+      
+      setStatus(`Found ${data.scans.length} scan(s)`, 'success');
+      renderScanList(data.scans, base);
+    } catch(e) {
+      setStatus(`Error: ${e.message}`, 'error');
+    } finally {
+      $('loadBtn').disabled = false;
+    }
+  }
+  
+  function renderScanList(scans, base) {
+    const list = $('scanList');
+    list.innerHTML = '';
+    scans.forEach(scan => {
+      const div = document.createElement('div');
+      div.className = 'scan-item';
+      div.innerHTML = `
+        <img class="scan-thumb" src="${base}${scan.thumbnail || '/uploads/' + scan.id}" onerror="this.style.background='#334155'">
+        <div class="scan-info">
+          <div class="scan-name">${scan.name || 'Scan'}</div>
+          <div class="scan-meta">${scan.device || 'desktop'} · ${scan.elements || 0} elements · ${scan.date || ''}</div>
+        </div>
+      `;
+      div.onclick = () => importScan(scan.id, base);
+      list.appendChild(div);
+    });
+  }
+  
+  async function importScan(scanId, base) {
+    setStatus('Fetching scan data...', 'info');
+    try {
+      const resp = await fetch(`${base}/api/figma-export/${scanId}`);
+      if (!resp.ok) throw new Error(`Failed to fetch scan: ${resp.status}`);
+      const data = await resp.json();
+      
+      setStatus('Sending to Figma...', 'info');
+      
+      // Fetch the image as bytes
+      let imageBytes = null;
+      if (data.image_url) {
+        const imgResp = await fetch(data.image_url.startsWith('http') ? data.image_url : `${base}${data.image_url}`);
+        const imgBuf = await imgResp.arrayBuffer();
+        imageBytes = new Uint8Array(imgBuf);
+      }
+      
+      parent.postMessage({ pluginMessage: {
+        type: 'import-scan',
+        name: data.name || 'Rezvo Scan',
+        width: data.width || 1440,
+        height: data.height || 900,
+        imageBytes: imageBytes ? Array.from(imageBytes) : null,
+        elements: data.elements || []
+      }}, '*');
+      
+      setStatus('Imported into Figma!', 'success');
+    } catch(e) {
+      setStatus(`Import failed: ${e.message}`, 'error');
+    }
+  }
+  
+  async function importFromUrl() {
+    const url = $('previewUrl').value.trim();
+    if (!url) { setStatus('Paste a preview URL first', 'error'); return; }
+    
+    setStatus('Fetching preview...', 'info');
+    try {
+      // Extract preview ID from URL
+      const match = url.match(/preview\/([a-f0-9]+)/);
+      const base = $('studioUrl').value.replace(/\/$/, '');
+      
+      if (match) {
+        await importScan(match[1], base);
+      } else {
+        // Try fetching HTML directly and sending as image
+        const resp = await fetch(url);
+        const html = await resp.text();
+        
+        parent.postMessage({ pluginMessage: {
+          type: 'import-html',
+          name: 'Rezvo Import',
+          html: html
+        }}, '*');
+        
+        setStatus('Sent to Figma', 'success');
+      }
+    } catch(e) {
+      setStatus(`Error: ${e.message}`, 'error');
+    }
+  }
+  
+  // Listen for messages from plugin code
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (msg?.type === 'status') {
+      setStatus(msg.text, msg.level || 'info');
+    }
+  };
+</script>
+</body>
+</html>

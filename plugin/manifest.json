@@ -1,0 +1,13 @@
+{
+  "name": "Rezvo Scanner",
+  "id": "rezvo-scanner-import",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://studio.rezvo.app"]
+  }
+}

@@ -233,6 +233,8 @@
               <button onclick="exportAs('html')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text);font-size:13px;border-radius:6px;cursor:pointer;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">📄 HTML File</button>
               <button onclick="exportAs('svg')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text);font-size:13px;border-radius:6px;cursor:pointer;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">🎨 SVG for Figma</button>
               <button onclick="exportAs('png')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text);font-size:13px;border-radius:6px;cursor:pointer;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">🖼️ PNG Image</button>
+              <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
+              <button onclick="exportAs('figma-plugin')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:#22c55e;font-size:13px;border-radius:6px;cursor:pointer;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">⬡ Get Figma Plugin</button>
             </div>
           </div>
         </div>
@@ -732,6 +734,10 @@ async function exportAs(format) {
     } catch(e) {
       addChatMessage('assistant', '⚠️ PNG export requires server-side rendering. Try HTML export instead.');
     }
+  }
+  else if (format === 'figma-plugin') {
+    window.open('/plugin/rezvo-scanner-plugin.zip', '_blank');
+    addChatMessage('assistant', '⬡ Figma Plugin — To install: 1) Unzip the download. 2) In Figma go to Plugins → Development → Import plugin from manifest. 3) Select manifest.json. 4) Run the plugin and click "Load Recent Scans" to import.');
   }
 }
 
