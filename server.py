@@ -6,7 +6,7 @@ Supports: Anthropic (Claude), xAI (Grok), Google Gemini, OpenAI (GPT-4o)
 import os, json, base64, uuid, httpx
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -18,19 +18,23 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEVICE_SIZES = {"mobile": (390, 844), "tablet": (1024, 768), "desktop": (1440, 900)}
 
-SYSTEM_PROMPT = """You are an expert UI designer and frontend developer specializing in pixel-perfect replication.
+SYSTEM_PROMPT = """You are an expert UI designer and frontend developer specializing in pixel-perfect replication from screenshots.
 
 CRITICAL RULES:
 1. Output ONLY raw HTML. No markdown fences. No explanations. No backticks. Just the HTML.
 2. Use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
-3. EXTRACT exact hex colors from the screenshot. Do NOT use Tailwind default palette colors.
-4. EXTRACT exact spacing, padding, border-radius from the screenshot. Use pixel values in style attributes when Tailwind classes don't match.
-5. Match typography exactly - font family, weight, size.
+3. EXTRACT exact hex colors from the screenshot. Do NOT use Tailwind default palette colors like blue-500, red-500 etc. Use the EXACT hex values you see.
+4. EXTRACT exact spacing, padding, margin, border-radius from the screenshot in pixels. Use style attributes when Tailwind classes don't match exactly.
+5. Match typography exactly - font family, weight, size, line-height, letter-spacing.
 6. Target viewport: {w}x{h}px ({device}).
-7. Include realistic placeholder content matching the screenshot.
-8. Make it responsive within the target viewport.
-9. Use Google Fonts CDN if specific fonts are needed.
-10. The output must be a COMPLETE standalone HTML file with <!DOCTYPE html> through </html>."""
+7. Include ALL elements visible in the screenshot - every button, icon, text label, divider, badge.
+8. Use inline SVG icons that visually match the icons in the screenshot.
+9. The output must be a COMPLETE standalone HTML file with <!DOCTYPE html> through </html>.
+10. Use Google Fonts CDN if specific fonts are needed.
+11. Replicate the EXACT layout proportions - if the left panel is 55% and right panel is 45%, match that exactly.
+12. For food/product images, use gradient placeholder backgrounds that match the color tones in the screenshot.
+13. Match shadow depths, border widths, and opacity levels precisely.
+14. If the screenshot shows a dark background behind a card/window, replicate that too."""
 
 
 def clean_html(html: str) -> str:
@@ -130,7 +134,36 @@ async def generate_design(
     if provider not in PROVIDERS: raise HTTPException(400, f"Unknown provider: {provider}")
     w, h = DEVICE_SIZES.get(device, (1024, 768))
     system = SYSTEM_PROMPT.format(w=w, h=h, device=device)
-    user_text = f"Replicate this UI design EXACTLY as a single HTML file.\nTarget: {device} ({w}x{h}px)\n{prompt or 'Replicate every element, color, spacing, and layout from the screenshot with pixel-perfect accuracy.'}\nRemember: Output ONLY the raw HTML code. No markdown, no backticks, no explanation."
+    has_image = bool(image_base64)
+    
+    if has_image:
+        if not prompt or prompt.lower().strip() in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate', 'clone', 'recreate this', 'rebuild this', 'make this'):
+            user_text = f"""Replicate the UI in this screenshot with PIXEL-PERFECT accuracy as a single HTML file.
+Target: {device} ({w}x{h}px)
+
+Study every detail: exact colors (use hex values from what you see, NOT Tailwind defaults), exact border-radius values, exact padding/margin spacing, exact font sizes and weights, exact icon styles, exact shadow depths, exact layout proportions.
+
+Reproduce EVERY element visible — headers, buttons, badges, icons, dividers, navigation items, text labels, input fields. Missing even one element is a failure.
+
+Output ONLY the raw HTML code."""
+        else:
+            user_text = f"""Replicate the UI in this screenshot as a single HTML file, with these modifications/notes:
+
+{prompt}
+
+Target: {device} ({w}x{h}px)
+
+Match every visual detail from the screenshot: exact hex colors, spacing, typography, icons, layout proportions. Apply any modifications described above.
+
+Output ONLY the raw HTML code."""
+    else:
+        user_text = f"""Create this UI as a single HTML file:
+
+{prompt or 'Create a professional UI design.'}
+
+Target: {device} ({w}x{h}px)
+
+Output ONLY the raw HTML code. No markdown, no backticks, no explanation."""
     try:
         result = await PROVIDERS[provider](api_key, system, user_text, image_base64, image_media_type)
         result["provider"] = provider
@@ -144,6 +177,26 @@ async def generate_design(
 @app.get("/")
 async def index():
     return FileResponse("static/index.html")
+
+
+PREVIEWS_DIR = Path("previews")
+PREVIEWS_DIR.mkdir(exist_ok=True)
+
+@app.post("/api/preview")
+async def save_preview(html: str = Form(...), name: str = Form("preview")):
+    """Save HTML and return a unique preview URL."""
+    preview_id = uuid.uuid4().hex[:10]
+    safe_name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()[:50] or "preview"
+    (PREVIEWS_DIR / f"{preview_id}.html").write_text(html, encoding="utf-8")
+    return {"id": preview_id, "url": f"/preview/{preview_id}", "name": safe_name}
+
+@app.get("/preview/{preview_id}")
+async def get_preview(preview_id: str):
+    """Serve a saved preview."""
+    path = PREVIEWS_DIR / f"{preview_id}.html"
+    if not path.exists():
+        raise HTTPException(404, "Preview not found")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

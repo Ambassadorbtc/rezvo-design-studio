@@ -594,9 +594,20 @@ function updateCanvasActions() {
   document.getElementById('exportBtn').style.display = has ? '' : 'none';
 }
 
-function previewSelected() {
+async function previewSelected() {
   const s = state.projects[state.activeProject]?.screens[state.selectedScreen]; if (!s) return;
-  const w = window.open('', '_blank'); w.document.write(s.html); w.document.close();
+  try {
+    const formData = new FormData();
+    formData.append('html', s.html);
+    formData.append('name', s.name);
+    const resp = await fetch('/api/preview', { method: 'POST', body: formData });
+    const data = await resp.json();
+    window.open(data.url, '_blank');
+  } catch(e) {
+    // Fallback to blob URL
+    const blob = new Blob([s.html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
 }
 function exportSelected() {
   const s = state.projects[state.activeProject]?.screens[state.selectedScreen]; if (!s) return;
