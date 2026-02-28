@@ -4,11 +4,5 @@
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
-  "containsWidget": false,
-  "capabilities": [],
-  "enableProposedApi": false,
-  "editorType": ["figma"],
-  "networkAccess": {
-    "allowedDomains": ["https://studio.rezvo.app"]
-  }
+  "editorType": ["figma"]
 }
