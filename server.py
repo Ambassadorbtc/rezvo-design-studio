@@ -1,12 +1,14 @@
 """
-REZVO DESIGN STUDIO — Server (Multi-Provider)
-Supports: Anthropic (Claude), xAI (Grok), Google Gemini, OpenAI (GPT-4o)
+REZVO DESIGN STUDIO — Server v2 (Scanner Pipeline)
+Two-pass generation: AI outputs crop markers → Pillow extracts real pixels.
 """
 
-import os, json, base64, uuid, httpx
+import os, json, base64, uuid, re, io, httpx
 from pathlib import Path
+from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -15,37 +17,141 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+PREVIEWS_DIR = Path("previews")
+PREVIEWS_DIR.mkdir(exist_ok=True)
 
-from fastapi.staticfiles import StaticFiles
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 DEVICE_SIZES = {"mobile": (390, 844), "tablet": (1024, 768), "desktop": (1440, 900)}
 
-SYSTEM_PROMPT = """You are a desktop scanner that converts screenshots into pixel-perfect HTML replicas.
 
-SCANNER MODE — CRITICAL RULES:
+# ═══════════════════════════════════════════════════
+# IMAGE CROPPING ENGINE
+# ═══════════════════════════════════════════════════
 
-1. Output ONLY raw HTML. No markdown fences. No explanations. No backticks.
-2. Use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
-3. The ORIGINAL SCREENSHOT is available at this URL: {{IMAGE_URL}}
-4. For EVERY photo, food image, product image, avatar, or visual element in the screenshot:
-   - Use a <div> with background-image: url('{{IMAGE_URL}}') 
-   - Use background-size and background-position (in percentages) to CROP the exact region from the original screenshot
-   - This extracts the ACTUAL PIXELS from the original — not placeholders, not gradients, not stock images
-   - Example: if a food photo is at roughly 15% from left, 55% from top of the screenshot:
-     background-image: url('{{IMAGE_URL}}'); background-size: 400% 300%; background-position: 15% 55%;
-   - Adjust background-size to control zoom level: larger % = more zoomed in on the region
-5. EXTRACT exact hex colors from the screenshot. Do NOT use Tailwind default palette colors.
-6. EXTRACT exact spacing, padding, margin, border-radius in pixels.
-7. Match typography exactly — font family, weight, size, line-height.
-8. Target viewport: {w}x{h}px ({device}).
-9. Include ALL elements visible: every button, icon, text label, divider, badge, nav item.
-10. Use inline SVG for icons that match the screenshot's icon style.
-11. Complete standalone HTML: <!DOCTYPE html> through </html>.
-12. Replicate EXACT layout proportions.
-13. Match shadow depths, border widths, opacity levels.
-14. Replicate any background behind the main card/window.
-15. Use Google Fonts if specific fonts are needed."""
+def crop_region_from_screenshot(img: Image.Image, x_pct: float, y_pct: float, w_pct: float, h_pct: float) -> str:
+    """Crop a percentage-based region from the screenshot, return as base64 data URL."""
+    iw, ih = img.size
+    x = int(iw * x_pct / 100)
+    y = int(ih * y_pct / 100)
+    w = int(iw * w_pct / 100)
+    h = int(ih * h_pct / 100)
+    # Clamp to image bounds
+    x = max(0, min(x, iw - 1))
+    y = max(0, min(y, ih - 1))
+    w = max(10, min(w, iw - x))
+    h = max(10, min(h, ih - y))
+    cropped = img.crop((x, y, x + w, y + h))
+    buf = io.BytesIO()
+    cropped.save(buf, format="PNG", optimize=True)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/png;base64,{b64}"
+
+
+def process_crop_markers(html: str, img: Image.Image) -> str:
+    """Find data-crop attributes and replace with actual cropped image data URLs."""
+    # Pattern: data-crop="x%,y%,w%,h%" on elements
+    # We look for elements with data-crop and inject the cropped image
+    
+    # Pattern 1: <div ... data-crop="x,y,w,h" ...> → inject background-image
+    def replace_div_crop(match):
+        full_tag = match.group(0)
+        coords = match.group(1)
+        try:
+            parts = [float(p.strip().replace('%', '')) for p in coords.split(',')]
+            if len(parts) == 4:
+                data_url = crop_region_from_screenshot(img, *parts)
+                # Remove the data-crop attribute and inject background-image style
+                new_tag = full_tag.replace(f'data-crop="{coords}"', '')
+                if 'style="' in new_tag:
+                    new_tag = new_tag.replace('style="', f'style="background-image:url(\'{data_url}\');background-size:cover;background-position:center;')
+                else:
+                    new_tag = new_tag.replace('>', f' style="background-image:url(\'{data_url}\');background-size:cover;background-position:center;">', 1)
+                return new_tag
+        except Exception:
+            pass
+        return full_tag
+    
+    html = re.sub(r'<div[^>]*data-crop="([^"]+)"[^>]*>', replace_div_crop, html)
+    
+    # Pattern 2: <img ... data-crop="x,y,w,h" ...> → replace src
+    def replace_img_crop(match):
+        full_tag = match.group(0)
+        coords = match.group(1)
+        try:
+            parts = [float(p.strip().replace('%', '')) for p in coords.split(',')]
+            if len(parts) == 4:
+                data_url = crop_region_from_screenshot(img, *parts)
+                # Replace src with cropped image
+                new_tag = re.sub(r'src="[^"]*"', f'src="{data_url}"', full_tag)
+                new_tag = new_tag.replace(f'data-crop="{coords}"', '')
+                return new_tag
+        except Exception:
+            pass
+        return full_tag
+    
+    html = re.sub(r'<img[^>]*data-crop="([^"]+)"[^>]*/?>', replace_img_crop, html)
+    
+    # Pattern 3: CROP(x,y,w,h) in CSS background-image or src values
+    def replace_inline_crop(match):
+        coords = match.group(1)
+        try:
+            parts = [float(p.strip().replace('%', '')) for p in coords.split(',')]
+            if len(parts) == 4:
+                return crop_region_from_screenshot(img, *parts)
+        except Exception:
+            pass
+        return match.group(0)
+    
+    html = re.sub(r'CROP\(([^)]+)\)', replace_inline_crop, html)
+    
+    return html
+
+
+# ═══════════════════════════════════════════════════
+# SYSTEM PROMPT — SCANNER MODE
+# ═══════════════════════════════════════════════════
+
+SYSTEM_PROMPT = """You are a desktop scanner that converts UI screenshots into pixel-perfect, functional HTML.
+
+TARGET: {w}x{h}px ({device})
+
+CRITICAL OUTPUT RULES:
+1. Output ONLY raw HTML. No markdown, no backticks, no explanation.
+2. Use Tailwind CSS: <script src="https://cdn.tailwindcss.com"></script>
+3. Complete standalone HTML: <!DOCTYPE html> through </html>.
+
+COLOR & LAYOUT RULES:
+4. Extract EXACT hex colors from the screenshot. NEVER use Tailwind default colors like blue-500.
+5. Match EXACT spacing, padding, margin, border-radius in pixels using style attributes.
+6. Match EXACT typography — font family, weight, size, line-height.
+7. Replicate EXACT layout proportions (e.g. 60/40 split).
+8. Match shadow depths, border widths, opacity levels.
+9. Use inline SVG icons matching the screenshot style.
+
+IMAGE EXTRACTION — THIS IS CRITICAL:
+10. For EVERY photograph, food image, product photo, or visual content in the screenshot, use this crop marker system:
+    - Add data-crop="X,Y,W,H" attribute where X,Y,W,H are PERCENTAGES of the screenshot
+    - X = percentage from left edge where the image starts
+    - Y = percentage from top edge where the image starts  
+    - W = percentage width of the image region
+    - H = percentage height of the image region
+    - Example: A food photo in the bottom-left quadrant might be: data-crop="5,55,20,15"
+    - The server will use these coordinates to CROP actual pixels from the original screenshot
+    - Use <div> elements with data-crop for background images
+    - Use <img data-crop="..." src="placeholder"> for inline images
+
+11. Be PRECISE with crop coordinates. Study where each image appears in the screenshot:
+    - If the screenshot is 1000px wide and an image starts at 100px from left, X = 10
+    - If it starts 500px from top of a 750px screenshot, Y = 66.7
+    - Estimate the width and height of each image region as percentages
+
+12. EVERY visible image MUST have a data-crop attribute. No grey boxes. No gradients. No placeholders.
+
+COMPLETENESS:
+13. Include ALL visible elements: buttons, badges, icons, nav items, text, dividers.
+14. Make interactive elements look clickable (cursor, hover states via Tailwind).
+15. Replicate any background/gradient behind the main UI card."""
 
 
 def clean_html(html: str) -> str:
@@ -56,12 +162,16 @@ def clean_html(html: str) -> str:
     return html.strip()
 
 
+# ═══════════════════════════════════════════════════
+# AI PROVIDERS
+# ═══════════════════════════════════════════════════
+
 async def call_anthropic(api_key, system, user_text, img_b64, img_type):
     user_content = []
     if img_b64:
         user_content.append({"type": "image", "source": {"type": "base64", "media_type": img_type, "data": img_b64}})
     user_content.append({"type": "text", "text": user_text})
-    async with httpx.AsyncClient(timeout=120.0) as c:
+    async with httpx.AsyncClient(timeout=180.0) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", headers={
             "Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01",
         }, json={"model": "claude-sonnet-4-20250514", "max_tokens": 16000, "system": system,
@@ -79,7 +189,7 @@ async def call_xai(api_key, system, user_text, img_b64, img_type):
         uc.append({"type": "image_url", "image_url": {"url": f"data:{img_type};base64,{img_b64}"}})
     uc.append({"type": "text", "text": user_text})
     msgs.append({"role": "user", "content": uc})
-    async with httpx.AsyncClient(timeout=120.0) as c:
+    async with httpx.AsyncClient(timeout=180.0) as c:
         r = await c.post("https://api.x.ai/v1/chat/completions", headers={
             "Content-Type": "application/json", "Authorization": f"Bearer {api_key}",
         }, json={"model": "grok-2-vision-latest", "max_tokens": 16000, "messages": msgs})
@@ -94,7 +204,7 @@ async def call_gemini(api_key, system, user_text, img_b64, img_type):
     if img_b64:
         parts.append({"inline_data": {"mime_type": img_type, "data": img_b64}})
     parts.append({"text": user_text})
-    async with httpx.AsyncClient(timeout=120.0) as c:
+    async with httpx.AsyncClient(timeout=180.0) as c:
         r = await c.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
             headers={"Content-Type": "application/json"},
             json={"system_instruction": {"parts": [{"text": system}]}, "contents": [{"parts": parts}],
@@ -112,7 +222,7 @@ async def call_openai(api_key, system, user_text, img_b64, img_type):
         uc.append({"type": "image_url", "image_url": {"url": f"data:{img_type};base64,{img_b64}", "detail": "high"}})
     uc.append({"type": "text", "text": user_text})
     msgs.append({"role": "user", "content": uc})
-    async with httpx.AsyncClient(timeout=120.0) as c:
+    async with httpx.AsyncClient(timeout=180.0) as c:
         r = await c.post("https://api.openai.com/v1/chat/completions", headers={
             "Content-Type": "application/json", "Authorization": f"Bearer {api_key}",
         }, json={"model": "gpt-4o", "max_tokens": 16000, "messages": msgs})
@@ -124,6 +234,10 @@ async def call_openai(api_key, system, user_text, img_b64, img_type):
 
 PROVIDERS = {"anthropic": call_anthropic, "xai": call_xai, "gemini": call_gemini, "openai": call_openai}
 
+
+# ═══════════════════════════════════════════════════
+# API ENDPOINTS
+# ═══════════════════════════════════════════════════
 
 @app.post("/api/upload")
 async def upload_image(file: UploadFile = File(...)):
@@ -147,27 +261,29 @@ async def generate_design(
     w, h = DEVICE_SIZES.get(device, (1024, 768))
     
     has_image = bool(image_base64)
+    system = SYSTEM_PROMPT.format(w=w, h=h, device=device)
     
-    # Build system prompt — inject image URL for scanner mode
-    if has_image and image_url:
-        system = SYSTEM_PROMPT.format(w=w, h=h, device=device).replace("{{IMAGE_URL}}", image_url)
-    else:
-        # Fallback non-scanner system prompt
-        system = SYSTEM_PROMPT.format(w=w, h=h, device=device).replace(
-            "The ORIGINAL SCREENSHOT is available at this URL: {{IMAGE_URL}}\n4. For EVERY photo, food image, product image, avatar, or visual element in the screenshot:\n   - Use a <div> with background-image: url('{{IMAGE_URL}}') \n   - Use background-size and background-position (in percentages) to CROP the exact region from the original screenshot\n   - This extracts the ACTUAL PIXELS from the original — not placeholders, not gradients, not stock images\n   - Example: if a food photo is at roughly 15% from left, 55% from top of the screenshot:\n     background-image: url('{{IMAGE_URL}}'); background-size: 400% 300%; background-position: 15% 55%;\n   - Adjust background-size to control zoom level: larger % = more zoomed in on the region",
-            "For images/photos, use gradient placeholder backgrounds matching the color tones visible in the reference."
-        )
-    
+    # Build user prompt
     if has_image:
-        if not prompt or prompt.lower().strip() in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate', 'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
+        is_simple = not prompt or prompt.lower().strip() in (
+            'copy this', 'replicate this', 'clone this', 'copy', 'replicate', 
+            'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'
+        )
+        if is_simple:
             user_text = f"""SCAN this screenshot into pixel-perfect HTML.
 Target: {device} ({w}x{h}px)
 
-For every photo/image element visible in the screenshot, use background-image with the original screenshot URL and background-position to crop the EXACT pixels from the source image. This is critical — no placeholders, no gradients, no stock images. Extract the real pixels.
+IMPORTANT: For EVERY photograph/food image/product image visible in the screenshot, you MUST add a data-crop attribute with percentage coordinates. Study the screenshot carefully:
+- Estimate where each image starts (X%, Y% from top-left)
+- Estimate each image's width and height as percentages of the full screenshot
+- The server will crop the actual pixels using these coordinates
 
-Reproduce EVERY element: headers, buttons, badges, icons, text labels, dividers, navigation, images. Missing any element is a failure.
+Example: If a food photo occupies roughly the area from 10% left, 55% top, spanning 18% wide and 12% tall:
+<div class="..." data-crop="10,55,18,12"></div>
 
-Output ONLY the raw HTML code."""
+Reproduce EVERY element. Every image MUST have data-crop. No grey boxes. No placeholder gradients.
+
+Output ONLY raw HTML."""
         else:
             user_text = f"""SCAN this screenshot into HTML with these modifications:
 
@@ -175,29 +291,47 @@ Output ONLY the raw HTML code."""
 
 Target: {device} ({w}x{h}px)
 
-For every photo/image element, crop actual pixels from the original screenshot using background-image + background-position. Apply the modifications described above.
+For EVERY photograph/image, add data-crop="X,Y,W,H" with percentage coordinates. The server crops real pixels.
 
-Output ONLY the raw HTML code."""
+Output ONLY raw HTML."""
     else:
         user_text = f"""Create this UI as a single HTML file:
 
 {prompt or 'Create a professional UI design.'}
 
 Target: {device} ({w}x{h}px)
+Output ONLY raw HTML."""
 
-Output ONLY the raw HTML code."""
     try:
+        # ── PASS 1: AI generates HTML with crop markers ──
         result = await PROVIDERS[provider](api_key, system, user_text, image_base64, image_media_type)
         result["provider"] = provider
         
-        # Post-process: replace server-relative image URL with base64 data URL for self-contained HTML
-        if has_image and image_url and image_base64:
-            data_url = f"data:{image_media_type};base64,{image_base64}"
-            result["html"] = result["html"].replace(image_url, data_url)
+        # ── PASS 2: Server-side pixel cropping ──
+        if has_image and image_base64:
+            try:
+                # Decode the original screenshot
+                img_bytes = base64.b64decode(image_base64)
+                img = Image.open(io.BytesIO(img_bytes))
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Count crop markers before processing
+                crop_count = len(re.findall(r'data-crop="[^"]+"', result["html"]))
+                
+                # Process all crop markers — extract real pixels
+                if crop_count > 0:
+                    result["html"] = process_crop_markers(result["html"], img)
+                    result["crops_processed"] = crop_count
+                else:
+                    result["crops_processed"] = 0
+                    
+            except Exception as e:
+                result["crop_error"] = str(e)
         
         return result
     except httpx.TimeoutException:
-        raise HTTPException(504, "Request timed out")
+        raise HTTPException(504, "Request timed out — try again")
     except HTTPException: raise
     except Exception as e: raise HTTPException(500, str(e))
 
@@ -207,12 +341,8 @@ async def index():
     return FileResponse("static/index.html")
 
 
-PREVIEWS_DIR = Path("previews")
-PREVIEWS_DIR.mkdir(exist_ok=True)
-
 @app.post("/api/preview")
 async def save_preview(html: str = Form(...), name: str = Form("preview")):
-    """Save HTML and return a unique preview URL."""
     preview_id = uuid.uuid4().hex[:10]
     safe_name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()[:50] or "preview"
     (PREVIEWS_DIR / f"{preview_id}.html").write_text(html, encoding="utf-8")
@@ -220,7 +350,6 @@ async def save_preview(html: str = Form(...), name: str = Form("preview")):
 
 @app.get("/preview/{preview_id}")
 async def get_preview(preview_id: str):
-    """Serve a saved preview."""
     path = PREVIEWS_DIR / f"{preview_id}.html"
     if not path.exists():
         raise HTTPException(404, "Preview not found")
@@ -228,7 +357,9 @@ async def get_preview(preview_id: str):
 
 
 if __name__ == "__main__":
-    print("\n  🎨 REZVO DESIGN STUDIO")
+    print("\n  📸 REZVO DESIGN STUDIO — Scanner Mode")
+    print("  ═══════════════════════════════════════")
+    print("  Pipeline: Screenshot → AI + Crop Markers → Pillow Extraction")
     print("  Providers: Anthropic · xAI · Gemini · OpenAI")
     print("  http://0.0.0.0:8500\n")
     uvicorn.run(app, host="0.0.0.0", port=8500)

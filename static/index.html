@@ -519,7 +519,8 @@ async function handleGenerate() {
     persist();
     state.selectedScreen = project.screens.length - 1;
     const dev = DEVICES[state.device];
-    addChatMessage('assistant', `✅ Generated via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})`);
+    const cropInfo = data.crops_processed ? ` · ${data.crops_processed} images extracted` : '';
+    addChatMessage('assistant', `✅ Scanned via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})${cropInfo}`);
   } catch(e) {
     clearInterval(progressTimer);
     addChatMessage('assistant', `❌ Error: ${e.message}`);
