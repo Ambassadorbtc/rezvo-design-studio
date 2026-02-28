@@ -204,7 +204,7 @@
           <div class="row">
             <button class="attach" onclick="document.getElementById('fileInput').click()">📎</button>
             <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
-            <textarea id="promptInput" placeholder="Describe your design..." rows="2" onkeydown="handlePromptKey(event)"></textarea>
+            <textarea id="promptInput" placeholder="'copy this' or describe changes..." rows="2" onkeydown="handlePromptKey(event)"></textarea>
             <button class="send" id="sendBtn" onclick="handleGenerate()" disabled>→</button>
           </div>
         </div>
@@ -411,7 +411,7 @@ function setDevice(d) { state.device = d; renderDeviceToggle(); }
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (state.chatMessages.length === 0) {
-    el.innerHTML = `<div class="empty-chat"><div class="icon">🎨</div><div>Upload a screenshot and describe your design</div></div>`;
+    el.innerHTML = `<div class="empty-chat"><div class="icon">📸</div><div style="font-size:15px;font-weight:600;margin-bottom:4px;">Scanner Mode</div><div>Upload a screenshot and type "copy this"<br>to extract pixel-perfect HTML</div></div>`;
     return;
   }
   let html = '';
@@ -440,7 +440,7 @@ async function handleFileUpload(event) {
   try {
     const resp = await fetch('/api/upload', { method: 'POST', body: formData });
     const data = await resp.json();
-    state.uploadData = { dataUrl: data.data_url, base64: data.base64, mediaType: data.media_type };
+    state.uploadData = { dataUrl: data.data_url, base64: data.base64, mediaType: data.media_type, publicUrl: data.public_url || '' };
     document.getElementById('uploadThumb').src = data.data_url;
     document.getElementById('upload-preview').style.display = '';
     updateSendBtn();
@@ -499,6 +499,7 @@ async function handleGenerate() {
     if (state.uploadData) {
       formData.append('image_base64', state.uploadData.base64);
       formData.append('image_media_type', state.uploadData.mediaType);
+      formData.append('image_url', state.uploadData.publicUrl || '');
     }
     const resp = await fetch('/api/generate', { method: 'POST', body: formData });
     clearInterval(progressTimer); state.progress = 100;
@@ -534,7 +535,7 @@ function renderCanvas() {
   inner.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
   let html = '';
   if (project.screens.length === 0 && !state.generating) {
-    html = `<div class="empty-canvas"><div class="icon">🎨</div><div class="title">Empty Canvas</div><div>Upload a screenshot in the chat panel to get started</div></div>`;
+    html = `<div class="empty-canvas"><div class="icon">📸</div><div class="title">Scanner Ready</div><div>Upload a screenshot → type "copy this" → get pixel-perfect HTML</div></div>`;
     inner.innerHTML = html; return;
   }
   project.screens.forEach((screen, i) => {

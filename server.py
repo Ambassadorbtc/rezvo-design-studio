@@ -16,25 +16,36 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 DEVICE_SIZES = {"mobile": (390, 844), "tablet": (1024, 768), "desktop": (1440, 900)}
 
-SYSTEM_PROMPT = """You are an expert UI designer and frontend developer specializing in pixel-perfect replication from screenshots.
+SYSTEM_PROMPT = """You are a desktop scanner that converts screenshots into pixel-perfect HTML replicas.
 
-CRITICAL RULES:
-1. Output ONLY raw HTML. No markdown fences. No explanations. No backticks. Just the HTML.
+SCANNER MODE — CRITICAL RULES:
+
+1. Output ONLY raw HTML. No markdown fences. No explanations. No backticks.
 2. Use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
-3. EXTRACT exact hex colors from the screenshot. Do NOT use Tailwind default palette colors like blue-500, red-500 etc. Use the EXACT hex values you see.
-4. EXTRACT exact spacing, padding, margin, border-radius from the screenshot in pixels. Use style attributes when Tailwind classes don't match exactly.
-5. Match typography exactly - font family, weight, size, line-height, letter-spacing.
-6. Target viewport: {w}x{h}px ({device}).
-7. Include ALL elements visible in the screenshot - every button, icon, text label, divider, badge.
-8. Use inline SVG icons that visually match the icons in the screenshot.
-9. The output must be a COMPLETE standalone HTML file with <!DOCTYPE html> through </html>.
-10. Use Google Fonts CDN if specific fonts are needed.
-11. Replicate the EXACT layout proportions - if the left panel is 55% and right panel is 45%, match that exactly.
-12. For food/product images, use gradient placeholder backgrounds that match the color tones in the screenshot.
-13. Match shadow depths, border widths, and opacity levels precisely.
-14. If the screenshot shows a dark background behind a card/window, replicate that too."""
+3. The ORIGINAL SCREENSHOT is available at this URL: {{IMAGE_URL}}
+4. For EVERY photo, food image, product image, avatar, or visual element in the screenshot:
+   - Use a <div> with background-image: url('{{IMAGE_URL}}') 
+   - Use background-size and background-position (in percentages) to CROP the exact region from the original screenshot
+   - This extracts the ACTUAL PIXELS from the original — not placeholders, not gradients, not stock images
+   - Example: if a food photo is at roughly 15% from left, 55% from top of the screenshot:
+     background-image: url('{{IMAGE_URL}}'); background-size: 400% 300%; background-position: 15% 55%;
+   - Adjust background-size to control zoom level: larger % = more zoomed in on the region
+5. EXTRACT exact hex colors from the screenshot. Do NOT use Tailwind default palette colors.
+6. EXTRACT exact spacing, padding, margin, border-radius in pixels.
+7. Match typography exactly — font family, weight, size, line-height.
+8. Target viewport: {w}x{h}px ({device}).
+9. Include ALL elements visible: every button, icon, text label, divider, badge, nav item.
+10. Use inline SVG for icons that match the screenshot's icon style.
+11. Complete standalone HTML: <!DOCTYPE html> through </html>.
+12. Replicate EXACT layout proportions.
+13. Match shadow depths, border widths, opacity levels.
+14. Replicate any background behind the main card/window.
+15. Use Google Fonts if specific fonts are needed."""
 
 
 def clean_html(html: str) -> str:
@@ -122,38 +133,49 @@ async def upload_image(file: UploadFile = File(...)):
     (UPLOAD_DIR / file_id).write_bytes(content)
     b64 = base64.b64encode(content).decode()
     mt = f"image/{ext}" if ext in ("png","jpg","jpeg","gif","webp") else "image/png"
-    return {"id": file_id, "data_url": f"data:{mt};base64,{b64}", "media_type": mt, "base64": b64}
+    return {"id": file_id, "data_url": f"data:{mt};base64,{b64}", "media_type": mt, "base64": b64, "public_url": f"/uploads/{file_id}"}
 
 
 @app.post("/api/generate")
 async def generate_design(
     api_key: str = Form(...), provider: str = Form("anthropic"), prompt: str = Form(""),
     image_base64: str = Form(""), image_media_type: str = Form("image/png"), device: str = Form("tablet"),
+    image_url: str = Form(""),
 ):
     if not api_key: raise HTTPException(400, "API key required")
     if provider not in PROVIDERS: raise HTTPException(400, f"Unknown provider: {provider}")
     w, h = DEVICE_SIZES.get(device, (1024, 768))
-    system = SYSTEM_PROMPT.format(w=w, h=h, device=device)
+    
     has_image = bool(image_base64)
     
+    # Build system prompt — inject image URL for scanner mode
+    if has_image and image_url:
+        system = SYSTEM_PROMPT.format(w=w, h=h, device=device).replace("{{IMAGE_URL}}", image_url)
+    else:
+        # Fallback non-scanner system prompt
+        system = SYSTEM_PROMPT.format(w=w, h=h, device=device).replace(
+            "The ORIGINAL SCREENSHOT is available at this URL: {{IMAGE_URL}}\n4. For EVERY photo, food image, product image, avatar, or visual element in the screenshot:\n   - Use a <div> with background-image: url('{{IMAGE_URL}}') \n   - Use background-size and background-position (in percentages) to CROP the exact region from the original screenshot\n   - This extracts the ACTUAL PIXELS from the original — not placeholders, not gradients, not stock images\n   - Example: if a food photo is at roughly 15% from left, 55% from top of the screenshot:\n     background-image: url('{{IMAGE_URL}}'); background-size: 400% 300%; background-position: 15% 55%;\n   - Adjust background-size to control zoom level: larger % = more zoomed in on the region",
+            "For images/photos, use gradient placeholder backgrounds matching the color tones visible in the reference."
+        )
+    
     if has_image:
-        if not prompt or prompt.lower().strip() in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate', 'clone', 'recreate this', 'rebuild this', 'make this'):
-            user_text = f"""Replicate the UI in this screenshot with PIXEL-PERFECT accuracy as a single HTML file.
+        if not prompt or prompt.lower().strip() in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate', 'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
+            user_text = f"""SCAN this screenshot into pixel-perfect HTML.
 Target: {device} ({w}x{h}px)
 
-Study every detail: exact colors (use hex values from what you see, NOT Tailwind defaults), exact border-radius values, exact padding/margin spacing, exact font sizes and weights, exact icon styles, exact shadow depths, exact layout proportions.
+For every photo/image element visible in the screenshot, use background-image with the original screenshot URL and background-position to crop the EXACT pixels from the source image. This is critical — no placeholders, no gradients, no stock images. Extract the real pixels.
 
-Reproduce EVERY element visible — headers, buttons, badges, icons, dividers, navigation items, text labels, input fields. Missing even one element is a failure.
+Reproduce EVERY element: headers, buttons, badges, icons, text labels, dividers, navigation, images. Missing any element is a failure.
 
 Output ONLY the raw HTML code."""
         else:
-            user_text = f"""Replicate the UI in this screenshot as a single HTML file, with these modifications/notes:
+            user_text = f"""SCAN this screenshot into HTML with these modifications:
 
 {prompt}
 
 Target: {device} ({w}x{h}px)
 
-Match every visual detail from the screenshot: exact hex colors, spacing, typography, icons, layout proportions. Apply any modifications described above.
+For every photo/image element, crop actual pixels from the original screenshot using background-image + background-position. Apply the modifications described above.
 
 Output ONLY the raw HTML code."""
     else:
@@ -163,10 +185,16 @@ Output ONLY the raw HTML code."""
 
 Target: {device} ({w}x{h}px)
 
-Output ONLY the raw HTML code. No markdown, no backticks, no explanation."""
+Output ONLY the raw HTML code."""
     try:
         result = await PROVIDERS[provider](api_key, system, user_text, image_base64, image_media_type)
         result["provider"] = provider
+        
+        # Post-process: replace server-relative image URL with base64 data URL for self-contained HTML
+        if has_image and image_url and image_base64:
+            data_url = f"data:{image_media_type};base64,{image_base64}"
+            result["html"] = result["html"].replace(image_url, data_url)
+        
         return result
     except httpx.TimeoutException:
         raise HTTPException(504, "Request timed out")
