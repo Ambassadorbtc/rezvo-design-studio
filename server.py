@@ -34,80 +34,182 @@ DEVICE_SIZES = {"mobile": (390, 844), "tablet": (1024, 768), "desktop": (1440, 9
 
 
 # ═══════════════════════════════════════════════════════════
-# STEP 1: GEMINI BOUNDING BOX DETECTION
+# STEP 1: IMAGE REGION DETECTION (Gemini + OpenCV fallback)
 # ═══════════════════════════════════════════════════════════
 
-DETECTION_PROMPT = """Analyze this UI screenshot. Find ALL photographs, food images, product images, 
-profile pictures, thumbnails, and any visual content that is NOT a solid color, icon, or text.
+import numpy as np
+import cv2
 
-Return ONLY a JSON array. Each item must have:
-- "label": short description (e.g. "banh mi sandwich photo", "chicken wrap photo")  
-- "box": [y_min, x_min, y_max, x_max] as integers 0-1000 (Gemini's normalized coordinate system)
+DETECTION_PROMPT = """Look at this UI screenshot carefully. 
 
-Example response:
+I need you to find every PHOTOGRAPH or REAL IMAGE in this screenshot. These are areas containing actual photos of food, products, people, or real-world objects — NOT solid colored rectangles, NOT icons, NOT text.
+
+For each photograph found, return its bounding box as pixel coordinates relative to the image dimensions.
+
+Return a JSON array like this:
 [
-  {"label": "banh mi sandwich photo", "box": [520, 50, 620, 250]},
-  {"label": "chicken wrap photo", "box": [520, 260, 620, 460]}
+  {"label": "description", "x1": 100, "y1": 400, "x2": 300, "y2": 550},
+  {"label": "description", "x1": 310, "y1": 400, "x2": 500, "y2": 550}
 ]
 
-Rules:
-- Coordinates are 0-1000 scale (0=top-left, 1000=bottom-right)
-- Only detect PHOTOGRAPHS and CONTENT IMAGES, not colored category tiles, icons, or UI elements
-- Be precise — the bounding box should tightly contain just the image, not surrounding padding
-- Return [] if no photographs/content images are found
-- Return ONLY the JSON array, no other text"""
+Where x1,y1 is the top-left corner and x2,y2 is the bottom-right corner in PIXELS based on the original image dimensions.
+
+If there are NO photographs (only colored tiles, icons, and text), return an empty array: []
+
+Return ONLY valid JSON, nothing else."""
 
 
-async def detect_image_regions(gemini_key: str, img_b64: str, img_type: str) -> list:
-    """Use Gemini to detect photograph/image regions and return bounding boxes."""
-    async with httpx.AsyncClient(timeout=60.0) as c:
-        r = await c.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{
-                    "parts": [
-                        {"inline_data": {"mime_type": img_type, "data": img_b64}},
-                        {"text": DETECTION_PROMPT}
-                    ]
-                }],
-                "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.1},
-            }
-        )
-        if r.status_code != 200:
-            log.error(f"Gemini detection failed: {r.text}")
-            return []
-        
+def detect_images_opencv(img: Image.Image, min_area_pct: float = 0.5) -> list:
+    """Use OpenCV texture analysis to find photograph regions in a UI screenshot.
+    Photos have high color variance and texture. UI elements (buttons, tiles) are flat."""
+    
+    # Convert PIL to OpenCV
+    cv_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    h, w = cv_img.shape[:2]
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+    
+    # Compute local texture using Laplacian variance in a grid
+    # High variance = likely a photograph, low variance = flat UI element
+    block_h, block_w = max(20, h // 30), max(20, w // 30)
+    texture_map = np.zeros((h, w), dtype=np.float32)
+    
+    for y in range(0, h - block_h, block_h // 2):
+        for x in range(0, w - block_w, block_w // 2):
+            block = gray[y:y+block_h, x:x+block_w]
+            variance = cv2.Laplacian(block, cv2.CV_64F).var()
+            texture_map[y:y+block_h, x:x+block_w] = np.maximum(
+                texture_map[y:y+block_h, x:x+block_w], variance
+            )
+    
+    # Also check color variance (photos have diverse colors, UI has flat colors)
+    hsv = cv2.cvtColor(cv_img, cv2.COLOR_BGR2HSV)
+    color_var_map = np.zeros((h, w), dtype=np.float32)
+    
+    for y in range(0, h - block_h, block_h // 2):
+        for x in range(0, w - block_w, block_w // 2):
+            block_hsv = hsv[y:y+block_h, x:x+block_w]
+            hue_std = np.std(block_hsv[:,:,0].astype(float))
+            sat_std = np.std(block_hsv[:,:,1].astype(float))
+            color_var_map[y:y+block_h, x:x+block_w] = np.maximum(
+                color_var_map[y:y+block_h, x:x+block_w], hue_std + sat_std
+            )
+    
+    # Combine texture + color variance
+    # Normalize both to 0-1
+    if texture_map.max() > 0:
+        texture_norm = texture_map / texture_map.max()
+    else:
+        texture_norm = texture_map
+    if color_var_map.max() > 0:
+        color_norm = color_var_map / color_var_map.max()
+    else:
+        color_norm = color_var_map
+    
+    combined = (texture_norm * 0.6 + color_norm * 0.4)
+    
+    # Threshold to find high-texture regions (likely photos)
+    threshold = 0.35
+    binary = (combined > threshold).astype(np.uint8) * 255
+    
+    # Morphological operations to clean up
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (block_w, block_h))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    
+    # Find contours
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    min_area = (w * h) * (min_area_pct / 100)  # Minimum area as % of image
+    regions = []
+    
+    for contour in contours:
+        x1, y1, cw, ch = cv2.boundingRect(contour)
+        area = cw * ch
+        if area < min_area:
+            continue
+        # Skip regions that span too much of the image (likely background)
+        if cw > w * 0.8 and ch > h * 0.8:
+            continue
+        # Skip very thin strips
+        aspect = max(cw, ch) / max(min(cw, ch), 1)
+        if aspect > 8:
+            continue
+            
+        regions.append({
+            "label": f"detected_image_{len(regions)}",
+            "box_pixels": [x1, y1, x1 + cw, y1 + ch],
+            "area": area,
+            "texture_score": float(np.mean(combined[y1:y1+ch, x1:x1+cw]))
+        })
+    
+    # Sort by position (top to bottom, left to right)
+    regions.sort(key=lambda r: (r["box_pixels"][1], r["box_pixels"][0]))
+    
+    log.info(f"OpenCV detected {len(regions)} photo regions")
+    return regions
+
+
+async def detect_image_regions(gemini_key: str, img_b64: str, img_type: str, img: Image.Image = None) -> list:
+    """Try Gemini first for detection, fall back to OpenCV texture analysis."""
+    
+    regions = []
+    
+    # Try Gemini API detection
+    if gemini_key:
         try:
-            data = r.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            # Clean up response — extract JSON array
-            text = text.strip()
-            if text.startswith("```json"): text = text[7:]
-            elif text.startswith("```"): text = text[3:]
-            if text.endswith("```"): text = text[:-3]
-            text = text.strip()
-            
-            regions = json.loads(text)
-            if not isinstance(regions, list):
-                return []
-            
-            # Validate each region
-            valid = []
-            for r in regions:
-                if isinstance(r, dict) and "box" in r and len(r["box"]) == 4:
-                    box = r["box"]
-                    if all(isinstance(v, (int, float)) for v in box):
-                        valid.append({
-                            "label": r.get("label", f"image_{len(valid)}"),
-                            "box": [int(v) for v in box]
-                        })
-            
-            log.info(f"Gemini detected {len(valid)} image regions")
-            return valid
+            iw, ih = img.size if img else (1024, 768)
+            async with httpx.AsyncClient(timeout=60.0) as c:
+                r = await c.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{
+                            "parts": [
+                                {"inline_data": {"mime_type": img_type, "data": img_b64}},
+                                {"text": DETECTION_PROMPT + f"\n\nThe image dimensions are {iw}x{ih} pixels."}
+                            ]
+                        }],
+                        "generationConfig": {
+                            "maxOutputTokens": 4096,
+                            "temperature": 0.1,
+                            "responseMimeType": "application/json",
+                        },
+                    }
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    text = text.strip()
+                    if text.startswith("```json"): text = text[7:]
+                    elif text.startswith("```"): text = text[3:]
+                    if text.endswith("```"): text = text[:-3]
+                    text = text.strip()
+                    
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict) and all(k in item for k in ("x1", "y1", "x2", "y2")):
+                                regions.append({
+                                    "label": item.get("label", f"image_{len(regions)}"),
+                                    "box_pixels": [int(item["x1"]), int(item["y1"]), int(item["x2"]), int(item["y2"])]
+                                })
+                        log.info(f"Gemini detected {len(regions)} regions")
+                else:
+                    log.warning(f"Gemini detection returned {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            log.error(f"Failed to parse Gemini detection response: {e}")
-            return []
+            log.warning(f"Gemini detection failed: {e}")
+    
+    # Fallback to OpenCV if Gemini found nothing
+    if not regions and img:
+        log.info("Gemini found no images, trying OpenCV texture analysis...")
+        cv_regions = detect_images_opencv(img)
+        for r in cv_regions:
+            regions.append({
+                "label": r["label"],
+                "box_pixels": r["box_pixels"]
+            })
+    
+    return regions
 
 
 # ═══════════════════════════════════════════════════════════
@@ -120,19 +222,12 @@ def crop_detected_regions(img: Image.Image, regions: list) -> list:
     results = []
     
     for i, region in enumerate(regions):
-        box = region["box"]  # [y_min, x_min, y_max, x_max] in 0-1000 scale
+        box = region["box_pixels"]  # [x1, y1, x2, y2] in actual pixels
         
-        # Convert from Gemini's 0-1000 normalized coords to actual pixels
-        y_min = int(box[0] / 1000 * ih)
-        x_min = int(box[1] / 1000 * iw)
-        y_max = int(box[2] / 1000 * ih)
-        x_max = int(box[3] / 1000 * iw)
-        
-        # Clamp to image bounds
-        x_min = max(0, min(x_min, iw - 1))
-        y_min = max(0, min(y_min, ih - 1))
-        x_max = max(x_min + 10, min(x_max, iw))
-        y_max = max(y_min + 10, min(y_max, ih))
+        x_min = max(0, min(int(box[0]), iw - 1))
+        y_min = max(0, min(int(box[1]), ih - 1))
+        x_max = max(x_min + 10, min(int(box[2]), iw))
+        y_max = max(y_min + 10, min(int(box[3]), ih))
         
         # Crop
         cropped = img.crop((x_min, y_min, x_max, y_max))
@@ -150,7 +245,6 @@ def crop_detected_regions(img: Image.Image, regions: list) -> list:
         results.append({
             "index": i,
             "label": region["label"],
-            "box_normalized": box,
             "box_pixels": [x_min, y_min, x_max, y_max],
             "size": [x_max - x_min, y_max - y_min],
             "path": f"/extracted/{crop_id}",
@@ -319,23 +413,31 @@ async def generate_design(
     
     has_image = bool(image_base64)
     extracted_images = []
+    pil_img = None
     
-    # ── STEP 1: Detect image regions using Gemini ──
+    # Decode the screenshot once for reuse
+    if has_image:
+        try:
+            img_bytes = base64.b64decode(image_base64)
+            pil_img = Image.open(io.BytesIO(img_bytes))
+            if pil_img.mode != 'RGB':
+                pil_img = pil_img.convert('RGB')
+            log.info(f"Screenshot decoded: {pil_img.size[0]}x{pil_img.size[1]}px")
+        except Exception as e:
+            log.error(f"Failed to decode screenshot: {e}")
+    
+    # ── STEP 1: Detect image regions ──
     detection_key = gemini_key or (api_key if provider == "gemini" else "")
     
-    if has_image and detection_key:
-        log.info("Step 1: Detecting image regions with Gemini...")
-        regions = await detect_image_regions(detection_key, image_base64, image_media_type)
+    if has_image and pil_img:
+        log.info("Step 1: Detecting image regions...")
+        regions = await detect_image_regions(detection_key, image_base64, image_media_type, pil_img)
         
         if regions:
             # ── STEP 2: Crop actual pixels ──
             log.info(f"Step 2: Cropping {len(regions)} detected regions with Pillow...")
             try:
-                img_bytes = base64.b64decode(image_base64)
-                img = Image.open(io.BytesIO(img_bytes))
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                extracted_images = crop_detected_regions(img, regions)
+                extracted_images = crop_detected_regions(pil_img, regions)
                 log.info(f"  Extracted {len(extracted_images)} images successfully")
             except Exception as e:
                 log.error(f"  Crop failed: {e}")
@@ -381,7 +483,8 @@ Output ONLY raw HTML."""
         result = await PROVIDERS[provider](api_key, system, user_text, image_base64, image_media_type)
         result["provider"] = provider
         result["images_detected"] = len(extracted_images)
-        result["detection_used"] = bool(detection_key and has_image)
+        result["detection_used"] = bool(has_image)
+        result["detection_method"] = "gemini+opencv" if has_image else "none"
         
         if extracted_images:
             result["extracted_images"] = [{"label": img["label"], "path": img["path"], "size": img["size"]} for img in extracted_images]
