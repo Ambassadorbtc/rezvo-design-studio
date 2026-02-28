@@ -25,13 +25,12 @@
     --mono: 'JetBrains Mono', monospace;
   }
   body { font-family: var(--font); background: var(--bg-base); color: var(--text-primary); height: 100vh; overflow: hidden; }
-  input, textarea, button { font-family: var(--font); }
+  input, textarea, button, select { font-family: var(--font); }
   button { cursor: pointer; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-  /* ── Layout ── */
   #app { display: flex; flex-direction: column; height: 100vh; }
   #topbar { height: 52px; background: var(--bg-surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; z-index: 100; }
   #topbar .logo { font-size: 17px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
@@ -43,11 +42,11 @@
   .btn:hover { border-color: var(--accent); color: var(--text-primary); }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn-primary:hover { background: var(--accent-hover); }
-  .api-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .provider-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
 
   #main { flex: 1; overflow: hidden; }
 
-  /* ── Dashboard ── */
+  /* Dashboard */
   #dashboard { padding: 40px 48px; max-width: 1200px; margin: 0 auto; overflow-y: auto; height: 100%; }
   #dashboard h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
   #dashboard .subtitle { color: var(--text-secondary); font-size: 15px; margin-bottom: 32px; }
@@ -61,7 +60,7 @@
   .new-card:hover { border-color: var(--accent); color: var(--accent); }
   .new-card .plus { font-size: 28px; }
 
-  /* ── Studio ── */
+  /* Studio */
   #studio { display: flex; height: 100%; }
   #chat-panel { width: 360px; background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
   #chat-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
@@ -70,6 +69,13 @@
   #device-toggle { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; }
   #device-toggle button { flex: 1; padding: 6px; border-radius: 8px; border: none; font-size: 12px; background: transparent; color: var(--text-muted); transition: all 0.15s; }
   #device-toggle button.active { background: var(--accent); color: #fff; font-weight: 600; }
+
+  /* Provider selector in chat */
+  #provider-bar { padding: 8px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; }
+  #provider-bar button { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 11px; font-weight: 600; background: transparent; color: var(--text-muted); transition: all 0.15s; display: flex; align-items: center; gap: 4px; }
+  #provider-bar button.active { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+  #provider-bar button .dot { width: 6px; height: 6px; border-radius: 50%; }
+
   #chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
   .msg { max-width: 90%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
   .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
@@ -92,15 +98,15 @@
   .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-  /* ── Canvas ── */
+  /* Canvas */
   #canvas-area { flex: 1; position: relative; overflow: hidden; }
   #canvas { width: 100%; height: 100%; cursor: default; }
   #canvas.moving { cursor: grab; }
   #canvas.panning { cursor: grabbing; }
   #canvas-inner { transform-origin: 0 0; position: absolute; top: 0; left: 0; }
-
   .screen-frame { position: absolute; cursor: pointer; }
-  .screen-frame .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .screen-frame .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  .screen-frame .label .prov { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
   .screen-frame .frame { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
   .screen-frame.selected .frame { border: 3px solid var(--accent); box-shadow: 0 0 30px rgba(108,92,231,0.3); }
   .screen-frame iframe { border: none; pointer-events: none; display: block; }
@@ -110,12 +116,10 @@
   .wireframe-box { border: 2px dashed var(--accent); border-radius: 12px; padding: 2px; box-shadow: 0 0 40px rgba(108,92,231,0.15); }
   .progress-bar { margin-top: 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #6c5ce7, #a29bfe); border-radius: 2px; transition: width 0.3s; }
-
   .empty-canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; color: var(--text-muted); }
   .empty-canvas .icon { font-size: 60px; margin-bottom: 14px; opacity: 0.5; }
   .empty-canvas .title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
 
-  /* ── Bottom toolbar ── */
   #canvas-toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 6px 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 10; }
   #canvas-toolbar button { padding: 7px 14px; border-radius: 8px; border: none; font-size: 13px; background: transparent; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
   #canvas-toolbar button.active { background: var(--accent); color: #fff; font-weight: 600; }
@@ -124,11 +128,10 @@
   #canvas-toolbar .zoom-val { font-size: 12px; color: var(--text-muted); min-width: 42px; text-align: center; font-family: var(--mono); }
   #canvas-toolbar .zoom-btn { width: 30px; height: 30px; padding: 0; justify-content: center; font-size: 16px; }
 
-  /* ── Top right actions ── */
   #canvas-actions { position: absolute; top: 14px; right: 18px; display: flex; gap: 8px; align-items: center; z-index: 10; }
   #canvas-actions .count { font-size: 12px; color: var(--text-muted); }
 
-  /* ── Modals ── */
+  /* Modals */
   .modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
   .modal { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; color: var(--text-primary); }
   .modal h2 { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
@@ -145,31 +148,30 @@
   .device-option .label { font-size: 13px; font-weight: 600; }
   .device-option .size { font-size: 11px; opacity: 0.6; }
 
-  /* Dot pattern for canvas */
-  #canvas {
-    background-image: radial-gradient(circle, #1a1a2e 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
+  /* Provider key rows in settings */
+  .key-row { margin-bottom: 16px; }
+  .key-row .key-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .key-row .key-header .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .key-row .key-header label { margin-bottom: 0; font-weight: 600; }
+
+  #canvas { background-image: radial-gradient(circle, #1a1a2e 1px, transparent 1px); background-size: 20px 20px; }
 </style>
 </head>
 <body>
 
 <div id="app">
-  <!-- Top Bar -->
   <div id="topbar">
     <div style="display:flex;align-items:center;">
       <div class="logo">REZVO<span>STUDIO</span></div>
       <div class="breadcrumb" id="breadcrumb" style="display:none;"></div>
     </div>
     <div class="actions">
-      <div class="api-dot" id="apiDot" style="background:var(--danger);" title="No API key set"></div>
+      <span class="provider-badge" id="activeProviderBadge"></span>
       <button class="btn" onclick="showSettings()">⚙ Settings</button>
     </div>
   </div>
 
-  <!-- Main -->
   <div id="main">
-    <!-- Dashboard -->
     <div id="dashboard">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;">
         <div>
@@ -182,9 +184,7 @@
       <div class="project-grid" id="projectGrid"></div>
     </div>
 
-    <!-- Studio -->
     <div id="studio" style="display:none;">
-      <!-- Chat Panel -->
       <div id="chat-panel">
         <div id="chat-header">
           <button class="back" onclick="goToDashboard()">←</button>
@@ -193,6 +193,7 @@
             <div id="chatScreenCount" style="font-size:11px;color:var(--text-muted);"></div>
           </div>
         </div>
+        <div id="provider-bar"></div>
         <div id="device-toggle"></div>
         <div id="chat-messages"></div>
         <div id="upload-preview" style="display:none;">
@@ -209,7 +210,6 @@
         </div>
       </div>
 
-      <!-- Canvas -->
       <div id="canvas-area">
         <div id="canvas" onmousedown="canvasMouseDown(event)" onmousemove="canvasMouseMove(event)" onmouseup="canvasMouseUp()" onmouseleave="canvasMouseUp()" onwheel="canvasWheel(event)">
           <div id="canvas-inner"></div>
@@ -251,33 +251,54 @@
 
 <!-- Settings Modal -->
 <div class="modal-overlay" id="settingsModal" style="display:none;" onclick="if(event.target===this)closeSettings()">
-  <div class="modal" style="width:460px;">
-    <h2>Settings</h2>
-    <label>Anthropic API Key</label>
-    <input type="password" id="settingsApiKey" placeholder="sk-ant-...">
-    <p class="hint">Your key is stored in your browser only. Sent to your server, which proxies to Anthropic.</p>
+  <div class="modal" style="width:520px;max-height:85vh;overflow-y:auto;">
+    <h2>API Keys</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">Add keys for the providers you want to use. Keys are stored in your browser only.</p>
+
+    <div class="key-row">
+      <div class="key-header"><div class="dot" style="background:#c084fc;"></div><label>Anthropic (Claude)</label></div>
+      <input type="password" id="keyAnthropic" placeholder="sk-ant-...">
+    </div>
+    <div class="key-row">
+      <div class="key-header"><div class="dot" style="background:#60a5fa;"></div><label>xAI (Grok)</label></div>
+      <input type="password" id="keyXai" placeholder="xai-...">
+    </div>
+    <div class="key-row">
+      <div class="key-header"><div class="dot" style="background:#fbbf24;"></div><label>Google Gemini</label></div>
+      <input type="password" id="keyGemini" placeholder="AIza...">
+    </div>
+    <div class="key-row">
+      <div class="key-header"><div class="dot" style="background:#34d399;"></div><label>OpenAI (GPT-4o)</label></div>
+      <input type="password" id="keyOpenai" placeholder="sk-...">
+    </div>
+
     <div class="btns">
       <button class="btn" onclick="closeSettings()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save All</button>
     </div>
   </div>
 </div>
 
 <script>
-// ════════════════════════════════════════════════════
-// STATE
-// ════════════════════════════════════════════════════
 const DEVICES = {
   mobile:  { w: 390, h: 844, label: 'Mobile',  icon: '📱' },
   tablet:  { w: 1024, h: 768, label: 'Tablet',  icon: '📟' },
   desktop: { w: 1440, h: 900, label: 'Desktop', icon: '🖥️' },
 };
 
+const PROVIDER_META = {
+  anthropic: { label: 'Claude', color: '#c084fc', prefix: 'sk-ant-' },
+  xai:       { label: 'Grok',   color: '#60a5fa', prefix: 'xai-' },
+  gemini:    { label: 'Gemini', color: '#fbbf24', prefix: 'AIza' },
+  openai:    { label: 'GPT-4o', color: '#34d399', prefix: 'sk-' },
+};
+
 let state = {
   view: 'dashboard',
   projects: [],
   activeProject: null,
-  apiKey: localStorage.getItem('rezvo_api_key') || '',
+  keys: { anthropic: '', xai: '', gemini: '', openai: '' },
+  activeProvider: 'anthropic',
   tool: 'select',
   zoom: 0.4,
   pan: { x: 60, y: 60 },
@@ -288,37 +309,41 @@ let state = {
   generating: false,
   progress: 0,
   chatMessages: [],
-  uploadData: null, // { dataUrl, base64, mediaType }
+  uploadData: null,
 };
 
-// ════════════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  // Load projects from localStorage
-  try {
-    const saved = localStorage.getItem('rezvo_projects');
-    if (saved) state.projects = JSON.parse(saved);
-  } catch(e) {}
-  
-  updateApiDot();
+  try { state.projects = JSON.parse(localStorage.getItem('rezvo_projects') || '[]'); } catch(e) {}
+  try { state.keys = JSON.parse(localStorage.getItem('rezvo_keys') || '{}'); } catch(e) {}
+  state.keys = { anthropic: '', xai: '', gemini: '', openai: '', ...state.keys };
+  state.activeProvider = localStorage.getItem('rezvo_provider') || 'anthropic';
+  // Auto-select first available provider
+  if (!state.keys[state.activeProvider]) {
+    const avail = Object.keys(state.keys).find(k => state.keys[k]);
+    if (avail) state.activeProvider = avail;
+  }
+  updateProviderBadge();
   renderDashboard();
   updateSendBtn();
-  
-  document.getElementById('promptInput').addEventListener('input', updateSendBtn);
+  document.getElementById('promptInput')?.addEventListener('input', updateSendBtn);
 });
 
-function persistProjects() {
-  localStorage.setItem('rezvo_projects', JSON.stringify(state.projects));
+function persist() { localStorage.setItem('rezvo_projects', JSON.stringify(state.projects)); }
+function persistKeys() { localStorage.setItem('rezvo_keys', JSON.stringify(state.keys)); localStorage.setItem('rezvo_provider', state.activeProvider); }
+
+function updateProviderBadge() {
+  const el = document.getElementById('activeProviderBadge');
+  const p = PROVIDER_META[state.activeProvider];
+  const hasKey = !!state.keys[state.activeProvider];
+  el.style.background = hasKey ? p.color + '22' : 'var(--danger)22';
+  el.style.color = hasKey ? p.color : 'var(--danger)';
+  el.textContent = hasKey ? p.label : 'No key set';
 }
 
-// ════════════════════════════════════════════════════
-// DASHBOARD
-// ════════════════════════════════════════════════════
+// ── Dashboard ──
 function renderDashboard() {
   const grid = document.getElementById('projectGrid');
   let html = `<button class="project-card new-card" onclick="showNewProject()"><span class="plus">+</span><span>New Project</span></button>`;
-  
   state.projects.forEach((p, i) => {
     const dev = DEVICES[p.device] || DEVICES.tablet;
     const date = new Date(p.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
@@ -337,49 +362,51 @@ function openProject(idx) {
   state.device = state.projects[idx].device || 'tablet';
   state.zoom = 0.4;
   state.pan = { x: 60, y: 60 };
-  
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('studio').style.display = 'flex';
   document.getElementById('breadcrumb').style.display = '';
   document.getElementById('breadcrumb').textContent = state.projects[idx].name;
   state.view = 'studio';
-  
-  renderChatHeader();
-  renderDeviceToggle();
-  renderChatMessages();
-  renderCanvas();
-  updateCanvasActions();
+  renderChatHeader(); renderProviderBar(); renderDeviceToggle(); renderChatMessages(); renderCanvas(); updateCanvasActions();
 }
 
 function goToDashboard() {
   document.getElementById('studio').style.display = 'none';
   document.getElementById('dashboard').style.display = '';
   document.getElementById('breadcrumb').style.display = 'none';
-  state.view = 'dashboard';
-  state.activeProject = null;
+  state.view = 'dashboard'; state.activeProject = null;
   renderDashboard();
 }
 
-// ════════════════════════════════════════════════════
-// STUDIO — Chat
-// ════════════════════════════════════════════════════
+// ── Chat ──
 function renderChatHeader() {
   const p = state.projects[state.activeProject];
   document.getElementById('chatProjectName').textContent = p.name;
   document.getElementById('chatScreenCount').textContent = `${p.screens.length} screens`;
 }
 
+function renderProviderBar() {
+  const el = document.getElementById('provider-bar');
+  el.innerHTML = Object.entries(PROVIDER_META).map(([k, v]) => {
+    const hasKey = !!state.keys[k];
+    return `<button class="${state.activeProvider===k?'active':''}" onclick="setProvider('${k}')" ${!hasKey?'title="No key set"':''}>
+      <span class="dot" style="background:${hasKey ? v.color : 'var(--text-muted)'};"></span>${v.label}
+    </button>`;
+  }).join('');
+}
+
+function setProvider(p) {
+  if (!state.keys[p]) { alert(`Add your ${PROVIDER_META[p].label} API key in Settings first.`); showSettings(); return; }
+  state.activeProvider = p;
+  persistKeys(); renderProviderBar(); updateProviderBadge();
+}
+
 function renderDeviceToggle() {
-  const el = document.getElementById('device-toggle');
-  el.innerHTML = Object.entries(DEVICES).map(([k, v]) =>
+  document.getElementById('device-toggle').innerHTML = Object.entries(DEVICES).map(([k, v]) =>
     `<button class="${state.device===k?'active':''}" onclick="setDevice('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
 }
-
-function setDevice(d) {
-  state.device = d;
-  renderDeviceToggle();
-}
+function setDevice(d) { state.device = d; renderDeviceToggle(); }
 
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
@@ -394,7 +421,8 @@ function renderChatMessages() {
     html += esc(m.content) + '</div>';
   });
   if (state.generating) {
-    html += `<div class="generating-indicator"><div class="pulse-dot"></div> Generating... ${Math.round(state.progress)}%</div>`;
+    const p = PROVIDER_META[state.activeProvider];
+    html += `<div class="generating-indicator"><div class="pulse-dot" style="background:${p.color}"></div> ${p.label} generating... ${Math.round(state.progress)}%</div>`;
   }
   el.innerHTML = html;
   el.scrollTop = el.scrollHeight;
@@ -405,28 +433,18 @@ function addChatMessage(role, content, image) {
   renderChatMessages();
 }
 
-// ════════════════════════════════════════════════════
-// FILE UPLOAD
-// ════════════════════════════════════════════════════
+// ── Upload ──
 async function handleFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  const formData = new FormData();
-  formData.append('file', file);
-  
+  const file = event.target.files[0]; if (!file) return;
+  const formData = new FormData(); formData.append('file', file);
   try {
     const resp = await fetch('/api/upload', { method: 'POST', body: formData });
     const data = await resp.json();
-    
     state.uploadData = { dataUrl: data.data_url, base64: data.base64, mediaType: data.media_type };
-    
     document.getElementById('uploadThumb').src = data.data_url;
     document.getElementById('upload-preview').style.display = '';
     updateSendBtn();
-  } catch(e) {
-    alert('Upload failed: ' + e.message);
-  }
+  } catch(e) { alert('Upload failed: ' + e.message); }
   event.target.value = '';
 }
 
@@ -439,306 +457,168 @@ function clearUpload() {
 
 function updateSendBtn() {
   const prompt = document.getElementById('promptInput')?.value?.trim();
-  const hasContent = prompt || state.uploadData;
-  document.getElementById('sendBtn').disabled = !hasContent || state.generating;
+  document.getElementById('sendBtn').disabled = !(prompt || state.uploadData) || state.generating;
 }
 
-function handlePromptKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); }
-}
+function handlePromptKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }
 
-// ════════════════════════════════════════════════════
-// GENERATE
-// ════════════════════════════════════════════════════
+// ── Generate ──
 async function handleGenerate() {
-  if (!state.apiKey) { alert('Set your Anthropic API key in Settings first.'); return; }
-  
+  const key = state.keys[state.activeProvider];
+  if (!key) { alert(`Set your ${PROVIDER_META[state.activeProvider].label} API key in Settings first.`); return; }
   const prompt = document.getElementById('promptInput').value.trim();
   if (!prompt && !state.uploadData) return;
-  
-  const uploadPreview = state.uploadData?.dataUrl || null;
-  addChatMessage('user', prompt || 'Replicate this design', uploadPreview);
-  
-  state.generating = true;
-  state.progress = 0;
+
+  addChatMessage('user', prompt || 'Replicate this design', state.uploadData?.dataUrl);
+  state.generating = true; state.progress = 0;
   document.getElementById('promptInput').value = '';
-  updateSendBtn();
-  renderCanvas();
-  renderChatMessages();
-  
-  // Progress simulation
+  updateSendBtn(); renderCanvas(); renderChatMessages();
+
   const progressTimer = setInterval(() => {
     state.progress = Math.min(state.progress + Math.random() * 6, 92);
-    renderChatMessages();
-    renderCanvas();
+    renderChatMessages(); renderCanvas();
   }, 600);
-  
+
   try {
     const formData = new FormData();
-    formData.append('api_key', state.apiKey);
+    formData.append('api_key', key);
+    formData.append('provider', state.activeProvider);
     formData.append('prompt', prompt);
     formData.append('device', state.device);
     if (state.uploadData) {
       formData.append('image_base64', state.uploadData.base64);
       formData.append('image_media_type', state.uploadData.mediaType);
     }
-    
     const resp = await fetch('/api/generate', { method: 'POST', body: formData });
-    clearInterval(progressTimer);
-    state.progress = 100;
-    
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.detail || 'Generation failed');
-    }
-    
+    clearInterval(progressTimer); state.progress = 100;
+    if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Generation failed'); }
     const data = await resp.json();
-    
-    // Add screen to project
     const project = state.projects[state.activeProject];
-    const newScreen = {
-      id: Date.now(),
-      name: prompt.slice(0, 50) || 'Generated Screen',
-      html: data.html,
-      device: state.device,
-      createdAt: new Date().toISOString(),
-    };
-    project.screens.push(newScreen);
-    persistProjects();
-    
+    const pMeta = PROVIDER_META[state.activeProvider];
+    project.screens.push({
+      id: Date.now(), name: prompt.slice(0, 50) || 'Generated Screen', html: data.html,
+      device: state.device, provider: state.activeProvider, createdAt: new Date().toISOString(),
+    });
+    persist();
     state.selectedScreen = project.screens.length - 1;
     const dev = DEVICES[state.device];
-    addChatMessage('assistant', `✅ Generated "${newScreen.name}" — ${dev.label} (${dev.w}×${dev.h})`);
-    
+    addChatMessage('assistant', `✅ Generated via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})`);
   } catch(e) {
     clearInterval(progressTimer);
     addChatMessage('assistant', `❌ Error: ${e.message}`);
   }
-  
-  state.generating = false;
-  state.progress = 0;
-  clearUpload();
-  renderChatHeader();
-  renderCanvas();
-  renderChatMessages();
-  updateCanvasActions();
-  updateSendBtn();
+  state.generating = false; state.progress = 0; clearUpload();
+  renderChatHeader(); renderCanvas(); renderChatMessages(); updateCanvasActions(); updateSendBtn();
 }
 
-// ════════════════════════════════════════════════════
-// CANVAS
-// ════════════════════════════════════════════════════
+// ── Canvas ──
 function renderCanvas() {
   const inner = document.getElementById('canvas-inner');
-  const project = state.projects[state.activeProject];
-  if (!project) return;
-  
+  const project = state.projects[state.activeProject]; if (!project) return;
   inner.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
-  
   let html = '';
-  
   if (project.screens.length === 0 && !state.generating) {
     html = `<div class="empty-canvas"><div class="icon">🎨</div><div class="title">Empty Canvas</div><div>Upload a screenshot in the chat panel to get started</div></div>`;
-    inner.innerHTML = html;
-    return;
+    inner.innerHTML = html; return;
   }
-  
   project.screens.forEach((screen, i) => {
     const dev = DEVICES[screen.device || state.device];
-    const col = i % 3;
-    const row = Math.floor(i / 3);
-    const x = col * (dev.w + 80);
-    const y = row * (dev.h + 100);
-    
+    const col = i % 3, row = Math.floor(i / 3);
+    const x = col * (dev.w + 80), y = row * (dev.h + 100);
+    const prov = PROVIDER_META[screen.provider || 'anthropic'];
     html += `<div class="screen-frame ${state.selectedScreen===i?'selected':''}" style="left:${x}px;top:${y}px;" onclick="selectScreen(${i})">
-      <div class="label" style="max-width:${dev.w}px;">${esc(screen.name)}</div>
+      <div class="label" style="max-width:${dev.w}px;">${esc(screen.name)} <span class="prov" style="background:${prov.color}22;color:${prov.color};">${prov.label}</span></div>
       <div class="frame" style="width:${dev.w}px;height:${dev.h}px;">
         <iframe srcdoc="${escAttr(screen.html)}" width="${dev.w}" height="${dev.h}" sandbox="allow-scripts" title="${esc(screen.name)}"></iframe>
       </div>
     </div>`;
   });
-  
-  // Generating placeholder
   if (state.generating) {
     const dev = DEVICES[state.device];
-    const idx = project.screens.length;
-    const col = idx % 3;
-    const row = Math.floor(idx / 3);
-    const x = col * (dev.w + 80);
-    const y = row * (dev.h + 100);
-    const scale = Math.min(400 / dev.w, 500 / dev.h);
-    const sw = dev.w * scale;
-    const sh = dev.h * scale;
-    
+    const idx = project.screens.length, col = idx % 3, row = Math.floor(idx / 3);
+    const x = col * (dev.w + 80), y = row * (dev.h + 100);
+    const prov = PROVIDER_META[state.activeProvider];
     html += `<div class="wireframe-placeholder" style="left:${x}px;top:${y}px;">
-      <div class="label"><div class="pulse-dot"></div> Generating... ${Math.round(state.progress)}%</div>
+      <div class="label"><div class="pulse-dot" style="background:${prov.color}"></div> ${prov.label} generating... ${Math.round(state.progress)}%</div>
       <div class="wireframe-box">
-        <svg width="${sw}" height="${sh}" viewBox="0 0 ${dev.w} ${dev.h}" style="border-radius:10px;overflow:hidden;display:block;">
+        <svg width="400" height="300" viewBox="0 0 ${dev.w} ${dev.h}" style="border-radius:10px;overflow:hidden;display:block;">
           <rect width="${dev.w}" height="${dev.h}" fill="#1a1a2e" rx="8"/>
           <rect x="0" y="0" width="${dev.w}" height="${dev.h*0.07}" fill="#16213e"/>
           <rect x="${dev.w*0.03}" y="${dev.h*0.02}" width="${dev.w*0.15}" height="${dev.h*0.03}" rx="4" fill="#0f3460"/>
-          <rect x="${dev.w*0.7}" y="${dev.h*0.02}" width="${dev.w*0.08}" height="${dev.h*0.03}" rx="4" fill="#0f3460"/>
           <rect x="${dev.w*0.03}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.25}" rx="8" fill="#16213e" opacity="0.7"/>
           <rect x="${dev.w*0.52}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.12}" rx="8" fill="#16213e" opacity="0.7"/>
-          <rect x="${dev.w*0.52}" y="${dev.h*0.26}" width="${dev.w*0.45}" height="${dev.h*0.11}" rx="8" fill="#16213e" opacity="0.7"/>
-          ${[0,1,2].map(i => `<rect x="${dev.w*(0.03+i*0.32)}" y="${dev.h*0.42}" width="${dev.w*0.29}" height="${dev.h*0.2}" rx="8" fill="#16213e" opacity="0.5"/>`).join('')}
-          <rect x="0" y="${dev.h-4}" width="${dev.w*(state.progress/100)}" height="4" fill="#6c5ce7" rx="2"/>
-          <rect x="0" y="${dev.h*(state.progress/100)}" width="${dev.w}" height="2" fill="#6c5ce7" opacity="0.6">
-            <animate attributeName="opacity" values="0.6;0.2;0.6" dur="1.5s" repeatCount="indefinite"/>
-          </rect>
+          <rect x="0" y="${dev.h-4}" width="${dev.w*(state.progress/100)}" height="4" fill="${prov.color}" rx="2"/>
         </svg>
       </div>
-      <div class="progress-bar"><div class="fill" style="width:${state.progress}%"></div></div>
+      <div class="progress-bar"><div class="fill" style="width:${state.progress}%;background:${prov.color};"></div></div>
     </div>`;
   }
-  
   inner.innerHTML = html;
 }
 
-function selectScreen(idx) {
-  state.selectedScreen = idx;
-  renderCanvas();
-  updateCanvasActions();
-}
+function selectScreen(idx) { state.selectedScreen = idx; renderCanvas(); updateCanvasActions(); }
 
 function updateCanvasActions() {
-  const project = state.projects[state.activeProject];
-  if (!project) return;
+  const project = state.projects[state.activeProject]; if (!project) return;
   document.getElementById('screenCountBadge').textContent = `${project.screens.length} screen${project.screens.length!==1?'s':''}`;
-  const hasSelection = state.selectedScreen !== null && project.screens[state.selectedScreen];
-  document.getElementById('previewBtn').style.display = hasSelection ? '' : 'none';
-  document.getElementById('exportBtn').style.display = hasSelection ? '' : 'none';
+  const has = state.selectedScreen !== null && project.screens[state.selectedScreen];
+  document.getElementById('previewBtn').style.display = has ? '' : 'none';
+  document.getElementById('exportBtn').style.display = has ? '' : 'none';
 }
 
 function previewSelected() {
-  const screen = state.projects[state.activeProject]?.screens[state.selectedScreen];
-  if (!screen) return;
-  const w = window.open('', '_blank');
-  w.document.write(screen.html);
-  w.document.close();
+  const s = state.projects[state.activeProject]?.screens[state.selectedScreen]; if (!s) return;
+  const w = window.open('', '_blank'); w.document.write(s.html); w.document.close();
 }
-
 function exportSelected() {
-  const screen = state.projects[state.activeProject]?.screens[state.selectedScreen];
-  if (!screen) return;
-  const blob = new Blob([screen.html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = screen.name.replace(/\s+/g, '-').toLowerCase() + '.html';
-  a.click();
-  URL.revokeObjectURL(url);
+  const s = state.projects[state.activeProject]?.screens[state.selectedScreen]; if (!s) return;
+  const blob = new Blob([s.html], { type: 'text/html' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = s.name.replace(/\s+/g, '-').toLowerCase() + '.html'; a.click();
 }
 
-// Canvas controls
-function canvasWheel(e) {
-  e.preventDefault();
-  const delta = e.deltaY > 0 ? -0.05 : 0.05;
-  state.zoom = Math.max(0.1, Math.min(3, state.zoom + delta));
-  document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
-  renderCanvas();
-}
+function canvasWheel(e) { e.preventDefault(); state.zoom = Math.max(0.1, Math.min(3, state.zoom + (e.deltaY > 0 ? -0.05 : 0.05))); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; renderCanvas(); }
+function canvasMouseDown(e) { if (state.tool === 'move' || e.button === 1) { state.isPanning = true; state.panStart = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y }; document.getElementById('canvas').classList.add('panning'); } }
+function canvasMouseMove(e) { if (state.isPanning) { state.pan = { x: e.clientX - state.panStart.x, y: e.clientY - state.panStart.y }; renderCanvas(); } }
+function canvasMouseUp() { state.isPanning = false; document.getElementById('canvas').classList.remove('panning'); }
+function setTool(t) { state.tool = t; document.getElementById('toolSelect').className = t==='select'?'active':''; document.getElementById('toolMove').className = t==='move'?'active':''; document.getElementById('canvas').classList.toggle('moving', t==='move'); }
+function zoomBy(d) { state.zoom = Math.max(0.1, Math.min(3, state.zoom + d)); document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%'; renderCanvas(); }
+function resetView() { state.zoom = 0.4; state.pan = { x: 60, y: 60 }; document.getElementById('zoomVal').textContent = '40%'; renderCanvas(); }
 
-function canvasMouseDown(e) {
-  if (state.tool === 'move' || e.button === 1) {
-    state.isPanning = true;
-    state.panStart = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y };
-    document.getElementById('canvas').classList.add('panning');
-  }
-}
-
-function canvasMouseMove(e) {
-  if (state.isPanning) {
-    state.pan = { x: e.clientX - state.panStart.x, y: e.clientY - state.panStart.y };
-    renderCanvas();
-  }
-}
-
-function canvasMouseUp() {
-  state.isPanning = false;
-  document.getElementById('canvas').classList.remove('panning');
-}
-
-function setTool(t) {
-  state.tool = t;
-  document.getElementById('toolSelect').className = t === 'select' ? 'active' : '';
-  document.getElementById('toolMove').className = t === 'move' ? 'active' : '';
-  const canvas = document.getElementById('canvas');
-  canvas.classList.toggle('moving', t === 'move');
-}
-
-function zoomBy(delta) {
-  state.zoom = Math.max(0.1, Math.min(3, state.zoom + delta));
-  document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
-  renderCanvas();
-}
-
-function resetView() {
-  state.zoom = 0.4;
-  state.pan = { x: 60, y: 60 };
-  document.getElementById('zoomVal').textContent = '40%';
-  renderCanvas();
-}
-
-// ════════════════════════════════════════════════════
-// MODALS
-// ════════════════════════════════════════════════════
+// ── Modals ──
 let newProjectDevice = 'tablet';
-
-function showNewProject() {
-  newProjectDevice = 'tablet';
-  document.getElementById('newProjectName').value = '';
-  renderDeviceOptions();
-  document.getElementById('newProjectModal').style.display = 'flex';
-  setTimeout(() => document.getElementById('newProjectName').focus(), 100);
-}
-
-function closeNewProject() {
-  document.getElementById('newProjectModal').style.display = 'none';
-}
-
-function renderDeviceOptions() {
-  document.getElementById('deviceOptions').innerHTML = Object.entries(DEVICES).map(([k, v]) =>
-    `<button class="device-option ${newProjectDevice===k?'active':''}" onclick="newProjectDevice='${k}';renderDeviceOptions()">
-      <div class="icon">${v.icon}</div><div class="label">${v.label}</div><div class="size">${v.w}×${v.h}</div>
-    </button>`
-  ).join('');
-}
-
+function showNewProject() { newProjectDevice = 'tablet'; document.getElementById('newProjectName').value = ''; renderDeviceOptions(); document.getElementById('newProjectModal').style.display = 'flex'; setTimeout(() => document.getElementById('newProjectName').focus(), 100); }
+function closeNewProject() { document.getElementById('newProjectModal').style.display = 'none'; }
+function renderDeviceOptions() { document.getElementById('deviceOptions').innerHTML = Object.entries(DEVICES).map(([k,v]) => `<button class="device-option ${newProjectDevice===k?'active':''}" onclick="newProjectDevice='${k}';renderDeviceOptions()"><div class="icon">${v.icon}</div><div class="label">${v.label}</div><div class="size">${v.w}×${v.h}</div></button>`).join(''); }
 function createProject() {
-  const name = document.getElementById('newProjectName').value.trim();
-  if (!name) return;
-  
-  const project = { name, device: newProjectDevice, createdAt: new Date().toISOString(), screens: [] };
-  state.projects.push(project);
-  persistProjects();
-  closeNewProject();
-  openProject(state.projects.length - 1);
+  const name = document.getElementById('newProjectName').value.trim(); if (!name) return;
+  state.projects.push({ name, device: newProjectDevice, createdAt: new Date().toISOString(), screens: [] });
+  persist(); closeNewProject(); openProject(state.projects.length - 1);
 }
 
 function showSettings() {
-  document.getElementById('settingsApiKey').value = state.apiKey;
+  document.getElementById('keyAnthropic').value = state.keys.anthropic;
+  document.getElementById('keyXai').value = state.keys.xai;
+  document.getElementById('keyGemini').value = state.keys.gemini;
+  document.getElementById('keyOpenai').value = state.keys.openai;
   document.getElementById('settingsModal').style.display = 'flex';
 }
-
-function closeSettings() {
-  document.getElementById('settingsModal').style.display = 'none';
-}
-
+function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
 function saveSettings() {
-  state.apiKey = document.getElementById('settingsApiKey').value.trim();
-  localStorage.setItem('rezvo_api_key', state.apiKey);
-  updateApiDot();
+  state.keys.anthropic = document.getElementById('keyAnthropic').value.trim();
+  state.keys.xai = document.getElementById('keyXai').value.trim();
+  state.keys.gemini = document.getElementById('keyGemini').value.trim();
+  state.keys.openai = document.getElementById('keyOpenai').value.trim();
+  // Auto-select first available if current has no key
+  if (!state.keys[state.activeProvider]) {
+    const avail = Object.keys(state.keys).find(k => state.keys[k]);
+    if (avail) state.activeProvider = avail;
+  }
+  persistKeys(); updateProviderBadge();
+  if (state.view === 'studio') renderProviderBar();
   closeSettings();
 }
 
-function updateApiDot() {
-  const dot = document.getElementById('apiDot');
-  dot.style.background = state.apiKey ? 'var(--success)' : 'var(--danger)';
-  dot.title = state.apiKey ? 'API key set' : 'No API key — click Settings';
-}
-
-// Utils
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
