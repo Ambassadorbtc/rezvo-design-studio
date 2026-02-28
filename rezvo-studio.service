@@ -1,0 +1,15 @@
+[Unit]
+Description=Rezvo Design Studio
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rezvo-studio
+ExecStart=/usr/bin/python3 /opt/rezvo-studio/server.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

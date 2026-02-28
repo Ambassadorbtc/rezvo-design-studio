@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rezvo Design Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg-base: #0f0f17;
+    --bg-surface: #1a1a2e;
+    --bg-elevated: #222236;
+    --border: #2a2a40;
+    --border-focus: #6c5ce7;
+    --text-primary: #e2e2f0;
+    --text-secondary: #8888a8;
+    --text-muted: #555570;
+    --accent: #6c5ce7;
+    --accent-hover: #7c6ef7;
+    --accent-dim: rgba(108,92,231,0.15);
+    --danger: #f38ba8;
+    --success: #a6e3a1;
+    --font: 'DM Sans', -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  body { font-family: var(--font); background: var(--bg-base); color: var(--text-primary); height: 100vh; overflow: hidden; }
+  input, textarea, button { font-family: var(--font); }
+  button { cursor: pointer; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Layout ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #topbar { height: 52px; background: var(--bg-surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; z-index: 100; }
+  #topbar .logo { font-size: 17px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
+  #topbar .logo span { font-weight: 400; color: var(--text-muted); font-size: 13px; margin-left: 6px; }
+  #topbar .breadcrumb { color: var(--text-muted); font-size: 13px; margin-left: 8px; }
+  #topbar .breadcrumb::before { content: '/'; margin-right: 8px; color: var(--border); }
+  #topbar .actions { display: flex; align-items: center; gap: 10px; }
+  .btn { padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 13px; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); color: var(--text-primary); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .api-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  #main { flex: 1; overflow: hidden; }
+
+  /* ── Dashboard ── */
+  #dashboard { padding: 40px 48px; max-width: 1200px; margin: 0 auto; overflow-y: auto; height: 100%; }
+  #dashboard h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+  #dashboard .subtitle { color: var(--text-secondary); font-size: 15px; margin-bottom: 32px; }
+  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+  .project-card { padding: 20px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-surface); text-align: left; transition: all 0.2s; min-height: 110px; display: flex; flex-direction: column; justify-content: space-between; }
+  .project-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .project-card .name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .project-card .meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .project-card .date { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+  .new-card { border: 2px dashed var(--border); background: transparent; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; }
+  .new-card:hover { border-color: var(--accent); color: var(--accent); }
+  .new-card .plus { font-size: 28px; }
+
+  /* ── Studio ── */
+  #studio { display: flex; height: 100%; }
+  #chat-panel { width: 360px; background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  #chat-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  #chat-header .back { background: none; border: none; color: var(--text-muted); font-size: 20px; padding: 4px; }
+  #chat-header .back:hover { color: var(--text-primary); }
+  #device-toggle { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; }
+  #device-toggle button { flex: 1; padding: 6px; border-radius: 8px; border: none; font-size: 12px; background: transparent; color: var(--text-muted); transition: all 0.15s; }
+  #device-toggle button.active { background: var(--accent); color: #fff; font-weight: 600; }
+  #chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 90%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .msg.assistant { align-self: flex-start; background: var(--bg-elevated); color: var(--text-primary); }
+  .msg img { max-width: 200px; border-radius: 8px; margin-bottom: 6px; display: block; }
+  .empty-chat { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-chat .icon { font-size: 40px; margin-bottom: 10px; }
+  #upload-preview { padding: 8px 16px; border-top: 1px solid var(--border); position: relative; }
+  #upload-preview img { height: 56px; border-radius: 8px; border: 1px solid var(--border); }
+  #upload-preview .remove { position: absolute; top: 2px; left: 70px; width: 20px; height: 20px; border-radius: 50%; background: var(--danger); border: none; color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  #chat-input { padding: 14px 16px; border-top: 1px solid var(--border); }
+  #chat-input .row { display: flex; gap: 8px; align-items: flex-end; }
+  #chat-input .attach { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 18px; flex-shrink: 0; }
+  #chat-input .attach:hover { border-color: var(--accent); color: var(--accent); }
+  #chat-input textarea { flex: 1; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-base); color: var(--text-primary); font-size: 13px; resize: none; outline: none; line-height: 1.4; min-height: 40px; max-height: 100px; }
+  #chat-input textarea:focus { border-color: var(--accent); }
+  #chat-input .send { width: 40px; height: 40px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-size: 16px; flex-shrink: 0; }
+  #chat-input .send:disabled { background: var(--border); cursor: default; }
+  .generating-indicator { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ── Canvas ── */
+  #canvas-area { flex: 1; position: relative; overflow: hidden; }
+  #canvas { width: 100%; height: 100%; cursor: default; }
+  #canvas.moving { cursor: grab; }
+  #canvas.panning { cursor: grabbing; }
+  #canvas-inner { transform-origin: 0 0; position: absolute; top: 0; left: 0; }
+
+  .screen-frame { position: absolute; cursor: pointer; }
+  .screen-frame .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .screen-frame .frame { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+  .screen-frame.selected .frame { border: 3px solid var(--accent); box-shadow: 0 0 30px rgba(108,92,231,0.3); }
+  .screen-frame iframe { border: none; pointer-events: none; display: block; }
+
+  .wireframe-placeholder { position: absolute; }
+  .wireframe-placeholder .label { font-size: 12px; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .wireframe-box { border: 2px dashed var(--accent); border-radius: 12px; padding: 2px; box-shadow: 0 0 40px rgba(108,92,231,0.15); }
+  .progress-bar { margin-top: 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #6c5ce7, #a29bfe); border-radius: 2px; transition: width 0.3s; }
+
+  .empty-canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; color: var(--text-muted); }
+  .empty-canvas .icon { font-size: 60px; margin-bottom: 14px; opacity: 0.5; }
+  .empty-canvas .title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+
+  /* ── Bottom toolbar ── */
+  #canvas-toolbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 6px 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 10; }
+  #canvas-toolbar button { padding: 7px 14px; border-radius: 8px; border: none; font-size: 13px; background: transparent; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  #canvas-toolbar button.active { background: var(--accent); color: #fff; font-weight: 600; }
+  #canvas-toolbar button:hover:not(.active) { color: var(--text-primary); }
+  #canvas-toolbar .sep { width: 1px; height: 24px; background: var(--border); margin: 0 6px; }
+  #canvas-toolbar .zoom-val { font-size: 12px; color: var(--text-muted); min-width: 42px; text-align: center; font-family: var(--mono); }
+  #canvas-toolbar .zoom-btn { width: 30px; height: 30px; padding: 0; justify-content: center; font-size: 16px; }
+
+  /* ── Top right actions ── */
+  #canvas-actions { position: absolute; top: 14px; right: 18px; display: flex; gap: 8px; align-items: center; z-index: 10; }
+  #canvas-actions .count { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Modals ── */
+  .modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
+  .modal { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; color: var(--text-primary); }
+  .modal h2 { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+  .modal label { font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 8px; }
+  .modal input[type="text"], .modal input[type="password"] { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-base); color: var(--text-primary); font-size: 14px; outline: none; }
+  .modal input:focus { border-color: var(--accent); }
+  .modal .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .modal .btns { display: flex; gap: 10px; margin-top: 22px; }
+  .modal .btns button { flex: 1; padding: 11px 20px; border-radius: 10px; font-size: 14px; }
+  .device-options { display: flex; gap: 10px; margin-bottom: 20px; }
+  .device-option { flex: 1; padding: 14px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-base); color: var(--text-muted); text-align: center; transition: all 0.15s; }
+  .device-option.active { border: 2px solid var(--accent); background: var(--accent-dim); color: var(--text-primary); }
+  .device-option .icon { font-size: 26px; margin-bottom: 4px; }
+  .device-option .label { font-size: 13px; font-weight: 600; }
+  .device-option .size { font-size: 11px; opacity: 0.6; }
+
+  /* Dot pattern for canvas */
+  #canvas {
+    background-image: radial-gradient(circle, #1a1a2e 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Top Bar -->
+  <div id="topbar">
+    <div style="display:flex;align-items:center;">
+      <div class="logo">REZVO<span>STUDIO</span></div>
+      <div class="breadcrumb" id="breadcrumb" style="display:none;"></div>
+    </div>
+    <div class="actions">
+      <div class="api-dot" id="apiDot" style="background:var(--danger);" title="No API key set"></div>
+      <button class="btn" onclick="showSettings()">⚙ Settings</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Dashboard -->
+    <div id="dashboard">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;">
+        <div>
+          <h1>Start generating your designs</h1>
+          <p class="subtitle">Upload screenshots, describe what you want, get pixel-accurate code.</p>
+        </div>
+        <button class="btn btn-primary" onclick="showNewProject()" style="font-size:14px;padding:10px 22px;">+ New Project</button>
+      </div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:16px;">Projects</div>
+      <div class="project-grid" id="projectGrid"></div>
+    </div>
+
+    <!-- Studio -->
+    <div id="studio" style="display:none;">
+      <!-- Chat Panel -->
+      <div id="chat-panel">
+        <div id="chat-header">
+          <button class="back" onclick="goToDashboard()">←</button>
+          <div>
+            <div id="chatProjectName" style="font-size:15px;font-weight:600;"></div>
+            <div id="chatScreenCount" style="font-size:11px;color:var(--text-muted);"></div>
+          </div>
+        </div>
+        <div id="device-toggle"></div>
+        <div id="chat-messages"></div>
+        <div id="upload-preview" style="display:none;">
+          <img id="uploadThumb" src="">
+          <button class="remove" onclick="clearUpload()">✕</button>
+        </div>
+        <div id="chat-input">
+          <div class="row">
+            <button class="attach" onclick="document.getElementById('fileInput').click()">📎</button>
+            <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+            <textarea id="promptInput" placeholder="Describe your design..." rows="2" onkeydown="handlePromptKey(event)"></textarea>
+            <button class="send" id="sendBtn" onclick="handleGenerate()" disabled>→</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas -->
+      <div id="canvas-area">
+        <div id="canvas" onmousedown="canvasMouseDown(event)" onmousemove="canvasMouseMove(event)" onmouseup="canvasMouseUp()" onmouseleave="canvasMouseUp()" onwheel="canvasWheel(event)">
+          <div id="canvas-inner"></div>
+        </div>
+        <div id="canvas-toolbar">
+          <button id="toolSelect" class="active" onclick="setTool('select')">⬆ Select</button>
+          <button id="toolMove" onclick="setTool('move')">✋ Move</button>
+          <div class="sep"></div>
+          <button class="zoom-btn" onclick="zoomBy(-0.1)">−</button>
+          <span class="zoom-val" id="zoomVal">50%</span>
+          <button class="zoom-btn" onclick="zoomBy(0.1)">+</button>
+          <div class="sep"></div>
+          <button onclick="resetView()" style="font-size:12px;">Reset</button>
+        </div>
+        <div id="canvas-actions">
+          <span class="count" id="screenCountBadge"></span>
+          <button class="btn" id="previewBtn" style="display:none;font-size:12px;" onclick="previewSelected()">↗ Preview</button>
+          <button class="btn btn-primary" id="exportBtn" style="display:none;font-size:12px;" onclick="exportSelected()">↓ Export</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="newProjectModal" style="display:none;" onclick="if(event.target===this)closeNewProject()">
+  <div class="modal" style="width:500px;">
+    <h2>New Project</h2>
+    <label>Project Name</label>
+    <input type="text" id="newProjectName" placeholder="e.g. Square POS Clone" autofocus>
+    <label style="margin-top:18px;">Device Target</label>
+    <div class="device-options" id="deviceOptions"></div>
+    <div class="btns">
+      <button class="btn" onclick="closeNewProject()">Cancel</button>
+      <button class="btn btn-primary" onclick="createProject()">Create Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal" style="display:none;" onclick="if(event.target===this)closeSettings()">
+  <div class="modal" style="width:460px;">
+    <h2>Settings</h2>
+    <label>Anthropic API Key</label>
+    <input type="password" id="settingsApiKey" placeholder="sk-ant-...">
+    <p class="hint">Your key is stored in your browser only. Sent to your server, which proxies to Anthropic.</p>
+    <div class="btns">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════
+const DEVICES = {
+  mobile:  { w: 390, h: 844, label: 'Mobile',  icon: '📱' },
+  tablet:  { w: 1024, h: 768, label: 'Tablet',  icon: '📟' },
+  desktop: { w: 1440, h: 900, label: 'Desktop', icon: '🖥️' },
+};
+
+let state = {
+  view: 'dashboard',
+  projects: [],
+  activeProject: null,
+  apiKey: localStorage.getItem('rezvo_api_key') || '',
+  tool: 'select',
+  zoom: 0.4,
+  pan: { x: 60, y: 60 },
+  isPanning: false,
+  panStart: { x: 0, y: 0 },
+  selectedScreen: null,
+  device: 'tablet',
+  generating: false,
+  progress: 0,
+  chatMessages: [],
+  uploadData: null, // { dataUrl, base64, mediaType }
+};
+
+// ════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Load projects from localStorage
+  try {
+    const saved = localStorage.getItem('rezvo_projects');
+    if (saved) state.projects = JSON.parse(saved);
+  } catch(e) {}
+  
+  updateApiDot();
+  renderDashboard();
+  updateSendBtn();
+  
+  document.getElementById('promptInput').addEventListener('input', updateSendBtn);
+});
+
+function persistProjects() {
+  localStorage.setItem('rezvo_projects', JSON.stringify(state.projects));
+}
+
+// ════════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════════
+function renderDashboard() {
+  const grid = document.getElementById('projectGrid');
+  let html = `<button class="project-card new-card" onclick="showNewProject()"><span class="plus">+</span><span>New Project</span></button>`;
+  
+  state.projects.forEach((p, i) => {
+    const dev = DEVICES[p.device] || DEVICES.tablet;
+    const date = new Date(p.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    html += `<button class="project-card" onclick="openProject(${i})">
+      <div><div class="name">${dev.icon} ${esc(p.name)}</div><div class="meta">${p.screens.length} screen${p.screens.length!==1?'s':''}</div></div>
+      <div class="date">${date}</div>
+    </button>`;
+  });
+  grid.innerHTML = html;
+}
+
+function openProject(idx) {
+  state.activeProject = idx;
+  state.selectedScreen = null;
+  state.chatMessages = [];
+  state.device = state.projects[idx].device || 'tablet';
+  state.zoom = 0.4;
+  state.pan = { x: 60, y: 60 };
+  
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('studio').style.display = 'flex';
+  document.getElementById('breadcrumb').style.display = '';
+  document.getElementById('breadcrumb').textContent = state.projects[idx].name;
+  state.view = 'studio';
+  
+  renderChatHeader();
+  renderDeviceToggle();
+  renderChatMessages();
+  renderCanvas();
+  updateCanvasActions();
+}
+
+function goToDashboard() {
+  document.getElementById('studio').style.display = 'none';
+  document.getElementById('dashboard').style.display = '';
+  document.getElementById('breadcrumb').style.display = 'none';
+  state.view = 'dashboard';
+  state.activeProject = null;
+  renderDashboard();
+}
+
+// ════════════════════════════════════════════════════
+// STUDIO — Chat
+// ════════════════════════════════════════════════════
+function renderChatHeader() {
+  const p = state.projects[state.activeProject];
+  document.getElementById('chatProjectName').textContent = p.name;
+  document.getElementById('chatScreenCount').textContent = `${p.screens.length} screens`;
+}
+
+function renderDeviceToggle() {
+  const el = document.getElementById('device-toggle');
+  el.innerHTML = Object.entries(DEVICES).map(([k, v]) =>
+    `<button class="${state.device===k?'active':''}" onclick="setDevice('${k}')">${v.icon} ${v.label}</button>`
+  ).join('');
+}
+
+function setDevice(d) {
+  state.device = d;
+  renderDeviceToggle();
+}
+
+function renderChatMessages() {
+  const el = document.getElementById('chat-messages');
+  if (state.chatMessages.length === 0) {
+    el.innerHTML = `<div class="empty-chat"><div class="icon">🎨</div><div>Upload a screenshot and describe your design</div></div>`;
+    return;
+  }
+  let html = '';
+  state.chatMessages.forEach(m => {
+    html += `<div class="msg ${m.role}">`;
+    if (m.image) html += `<img src="${m.image}">`;
+    html += esc(m.content) + '</div>';
+  });
+  if (state.generating) {
+    html += `<div class="generating-indicator"><div class="pulse-dot"></div> Generating... ${Math.round(state.progress)}%</div>`;
+  }
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function addChatMessage(role, content, image) {
+  state.chatMessages.push({ role, content, image: image || null });
+  renderChatMessages();
+}
+
+// ════════════════════════════════════════════════════
+// FILE UPLOAD
+// ════════════════════════════════════════════════════
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await resp.json();
+    
+    state.uploadData = { dataUrl: data.data_url, base64: data.base64, mediaType: data.media_type };
+    
+    document.getElementById('uploadThumb').src = data.data_url;
+    document.getElementById('upload-preview').style.display = '';
+    updateSendBtn();
+  } catch(e) {
+    alert('Upload failed: ' + e.message);
+  }
+  event.target.value = '';
+}
+
+function clearUpload() {
+  state.uploadData = null;
+  document.getElementById('upload-preview').style.display = 'none';
+  document.getElementById('uploadThumb').src = '';
+  updateSendBtn();
+}
+
+function updateSendBtn() {
+  const prompt = document.getElementById('promptInput')?.value?.trim();
+  const hasContent = prompt || state.uploadData;
+  document.getElementById('sendBtn').disabled = !hasContent || state.generating;
+}
+
+function handlePromptKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); }
+}
+
+// ════════════════════════════════════════════════════
+// GENERATE
+// ════════════════════════════════════════════════════
+async function handleGenerate() {
+  if (!state.apiKey) { alert('Set your Anthropic API key in Settings first.'); return; }
+  
+  const prompt = document.getElementById('promptInput').value.trim();
+  if (!prompt && !state.uploadData) return;
+  
+  const uploadPreview = state.uploadData?.dataUrl || null;
+  addChatMessage('user', prompt || 'Replicate this design', uploadPreview);
+  
+  state.generating = true;
+  state.progress = 0;
+  document.getElementById('promptInput').value = '';
+  updateSendBtn();
+  renderCanvas();
+  renderChatMessages();
+  
+  // Progress simulation
+  const progressTimer = setInterval(() => {
+    state.progress = Math.min(state.progress + Math.random() * 6, 92);
+    renderChatMessages();
+    renderCanvas();
+  }, 600);
+  
+  try {
+    const formData = new FormData();
+    formData.append('api_key', state.apiKey);
+    formData.append('prompt', prompt);
+    formData.append('device', state.device);
+    if (state.uploadData) {
+      formData.append('image_base64', state.uploadData.base64);
+      formData.append('image_media_type', state.uploadData.mediaType);
+    }
+    
+    const resp = await fetch('/api/generate', { method: 'POST', body: formData });
+    clearInterval(progressTimer);
+    state.progress = 100;
+    
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Generation failed');
+    }
+    
+    const data = await resp.json();
+    
+    // Add screen to project
+    const project = state.projects[state.activeProject];
+    const newScreen = {
+      id: Date.now(),
+      name: prompt.slice(0, 50) || 'Generated Screen',
+      html: data.html,
+      device: state.device,
+      createdAt: new Date().toISOString(),
+    };
+    project.screens.push(newScreen);
+    persistProjects();
+    
+    state.selectedScreen = project.screens.length - 1;
+    const dev = DEVICES[state.device];
+    addChatMessage('assistant', `✅ Generated "${newScreen.name}" — ${dev.label} (${dev.w}×${dev.h})`);
+    
+  } catch(e) {
+    clearInterval(progressTimer);
+    addChatMessage('assistant', `❌ Error: ${e.message}`);
+  }
+  
+  state.generating = false;
+  state.progress = 0;
+  clearUpload();
+  renderChatHeader();
+  renderCanvas();
+  renderChatMessages();
+  updateCanvasActions();
+  updateSendBtn();
+}
+
+// ════════════════════════════════════════════════════
+// CANVAS
+// ════════════════════════════════════════════════════
+function renderCanvas() {
+  const inner = document.getElementById('canvas-inner');
+  const project = state.projects[state.activeProject];
+  if (!project) return;
+  
+  inner.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+  
+  let html = '';
+  
+  if (project.screens.length === 0 && !state.generating) {
+    html = `<div class="empty-canvas"><div class="icon">🎨</div><div class="title">Empty Canvas</div><div>Upload a screenshot in the chat panel to get started</div></div>`;
+    inner.innerHTML = html;
+    return;
+  }
+  
+  project.screens.forEach((screen, i) => {
+    const dev = DEVICES[screen.device || state.device];
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const x = col * (dev.w + 80);
+    const y = row * (dev.h + 100);
+    
+    html += `<div class="screen-frame ${state.selectedScreen===i?'selected':''}" style="left:${x}px;top:${y}px;" onclick="selectScreen(${i})">
+      <div class="label" style="max-width:${dev.w}px;">${esc(screen.name)}</div>
+      <div class="frame" style="width:${dev.w}px;height:${dev.h}px;">
+        <iframe srcdoc="${escAttr(screen.html)}" width="${dev.w}" height="${dev.h}" sandbox="allow-scripts" title="${esc(screen.name)}"></iframe>
+      </div>
+    </div>`;
+  });
+  
+  // Generating placeholder
+  if (state.generating) {
+    const dev = DEVICES[state.device];
+    const idx = project.screens.length;
+    const col = idx % 3;
+    const row = Math.floor(idx / 3);
+    const x = col * (dev.w + 80);
+    const y = row * (dev.h + 100);
+    const scale = Math.min(400 / dev.w, 500 / dev.h);
+    const sw = dev.w * scale;
+    const sh = dev.h * scale;
+    
+    html += `<div class="wireframe-placeholder" style="left:${x}px;top:${y}px;">
+      <div class="label"><div class="pulse-dot"></div> Generating... ${Math.round(state.progress)}%</div>
+      <div class="wireframe-box">
+        <svg width="${sw}" height="${sh}" viewBox="0 0 ${dev.w} ${dev.h}" style="border-radius:10px;overflow:hidden;display:block;">
+          <rect width="${dev.w}" height="${dev.h}" fill="#1a1a2e" rx="8"/>
+          <rect x="0" y="0" width="${dev.w}" height="${dev.h*0.07}" fill="#16213e"/>
+          <rect x="${dev.w*0.03}" y="${dev.h*0.02}" width="${dev.w*0.15}" height="${dev.h*0.03}" rx="4" fill="#0f3460"/>
+          <rect x="${dev.w*0.7}" y="${dev.h*0.02}" width="${dev.w*0.08}" height="${dev.h*0.03}" rx="4" fill="#0f3460"/>
+          <rect x="${dev.w*0.03}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.25}" rx="8" fill="#16213e" opacity="0.7"/>
+          <rect x="${dev.w*0.52}" y="${dev.h*0.12}" width="${dev.w*0.45}" height="${dev.h*0.12}" rx="8" fill="#16213e" opacity="0.7"/>
+          <rect x="${dev.w*0.52}" y="${dev.h*0.26}" width="${dev.w*0.45}" height="${dev.h*0.11}" rx="8" fill="#16213e" opacity="0.7"/>
+          ${[0,1,2].map(i => `<rect x="${dev.w*(0.03+i*0.32)}" y="${dev.h*0.42}" width="${dev.w*0.29}" height="${dev.h*0.2}" rx="8" fill="#16213e" opacity="0.5"/>`).join('')}
+          <rect x="0" y="${dev.h-4}" width="${dev.w*(state.progress/100)}" height="4" fill="#6c5ce7" rx="2"/>
+          <rect x="0" y="${dev.h*(state.progress/100)}" width="${dev.w}" height="2" fill="#6c5ce7" opacity="0.6">
+            <animate attributeName="opacity" values="0.6;0.2;0.6" dur="1.5s" repeatCount="indefinite"/>
+          </rect>
+        </svg>
+      </div>
+      <div class="progress-bar"><div class="fill" style="width:${state.progress}%"></div></div>
+    </div>`;
+  }
+  
+  inner.innerHTML = html;
+}
+
+function selectScreen(idx) {
+  state.selectedScreen = idx;
+  renderCanvas();
+  updateCanvasActions();
+}
+
+function updateCanvasActions() {
+  const project = state.projects[state.activeProject];
+  if (!project) return;
+  document.getElementById('screenCountBadge').textContent = `${project.screens.length} screen${project.screens.length!==1?'s':''}`;
+  const hasSelection = state.selectedScreen !== null && project.screens[state.selectedScreen];
+  document.getElementById('previewBtn').style.display = hasSelection ? '' : 'none';
+  document.getElementById('exportBtn').style.display = hasSelection ? '' : 'none';
+}
+
+function previewSelected() {
+  const screen = state.projects[state.activeProject]?.screens[state.selectedScreen];
+  if (!screen) return;
+  const w = window.open('', '_blank');
+  w.document.write(screen.html);
+  w.document.close();
+}
+
+function exportSelected() {
+  const screen = state.projects[state.activeProject]?.screens[state.selectedScreen];
+  if (!screen) return;
+  const blob = new Blob([screen.html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = screen.name.replace(/\s+/g, '-').toLowerCase() + '.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Canvas controls
+function canvasWheel(e) {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  state.zoom = Math.max(0.1, Math.min(3, state.zoom + delta));
+  document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
+  renderCanvas();
+}
+
+function canvasMouseDown(e) {
+  if (state.tool === 'move' || e.button === 1) {
+    state.isPanning = true;
+    state.panStart = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y };
+    document.getElementById('canvas').classList.add('panning');
+  }
+}
+
+function canvasMouseMove(e) {
+  if (state.isPanning) {
+    state.pan = { x: e.clientX - state.panStart.x, y: e.clientY - state.panStart.y };
+    renderCanvas();
+  }
+}
+
+function canvasMouseUp() {
+  state.isPanning = false;
+  document.getElementById('canvas').classList.remove('panning');
+}
+
+function setTool(t) {
+  state.tool = t;
+  document.getElementById('toolSelect').className = t === 'select' ? 'active' : '';
+  document.getElementById('toolMove').className = t === 'move' ? 'active' : '';
+  const canvas = document.getElementById('canvas');
+  canvas.classList.toggle('moving', t === 'move');
+}
+
+function zoomBy(delta) {
+  state.zoom = Math.max(0.1, Math.min(3, state.zoom + delta));
+  document.getElementById('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
+  renderCanvas();
+}
+
+function resetView() {
+  state.zoom = 0.4;
+  state.pan = { x: 60, y: 60 };
+  document.getElementById('zoomVal').textContent = '40%';
+  renderCanvas();
+}
+
+// ════════════════════════════════════════════════════
+// MODALS
+// ════════════════════════════════════════════════════
+let newProjectDevice = 'tablet';
+
+function showNewProject() {
+  newProjectDevice = 'tablet';
+  document.getElementById('newProjectName').value = '';
+  renderDeviceOptions();
+  document.getElementById('newProjectModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('newProjectName').focus(), 100);
+}
+
+function closeNewProject() {
+  document.getElementById('newProjectModal').style.display = 'none';
+}
+
+function renderDeviceOptions() {
+  document.getElementById('deviceOptions').innerHTML = Object.entries(DEVICES).map(([k, v]) =>
+    `<button class="device-option ${newProjectDevice===k?'active':''}" onclick="newProjectDevice='${k}';renderDeviceOptions()">
+      <div class="icon">${v.icon}</div><div class="label">${v.label}</div><div class="size">${v.w}×${v.h}</div>
+    </button>`
+  ).join('');
+}
+
+function createProject() {
+  const name = document.getElementById('newProjectName').value.trim();
+  if (!name) return;
+  
+  const project = { name, device: newProjectDevice, createdAt: new Date().toISOString(), screens: [] };
+  state.projects.push(project);
+  persistProjects();
+  closeNewProject();
+  openProject(state.projects.length - 1);
+}
+
+function showSettings() {
+  document.getElementById('settingsApiKey').value = state.apiKey;
+  document.getElementById('settingsModal').style.display = 'flex';
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
+
+function saveSettings() {
+  state.apiKey = document.getElementById('settingsApiKey').value.trim();
+  localStorage.setItem('rezvo_api_key', state.apiKey);
+  updateApiDot();
+  closeSettings();
+}
+
+function updateApiDot() {
+  const dot = document.getElementById('apiDot');
+  dot.style.background = state.apiKey ? 'var(--success)' : 'var(--danger)';
+  dot.title = state.apiKey ? 'API key set' : 'No API key — click Settings';
+}
+
+// Utils
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
