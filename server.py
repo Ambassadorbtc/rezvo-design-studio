@@ -213,8 +213,179 @@ async def detect_image_regions(gemini_key: str, img_b64: str, img_type: str, img
 
 
 # ═══════════════════════════════════════════════════════════
-# STEP 2: PILLOW CROPS ACTUAL PIXELS
+# TRUE SCANNER MODE — Screenshot IS the visual
 # ═══════════════════════════════════════════════════════════
+
+SCANNER_ANALYSIS_PROMPT = """Analyze this UI screenshot and map its interactive structure.
+
+You are NOT rebuilding this UI. The original screenshot will be used as the visual.
+Your job is to identify every interactive element and return its position.
+
+Return ONLY a JSON object with this structure:
+{{
+  "width": <detected UI width in pixels>,
+  "height": <detected UI height in pixels>,
+  "elements": [
+    {{
+      "type": "button|link|tab|input|nav-item|card",
+      "label": "text on the element",
+      "x": <x position as percentage 0-100>,
+      "y": <y position as percentage 0-100>,
+      "w": <width as percentage 0-100>,
+      "h": <height as percentage 0-100>,
+      "action": "description of what clicking would do"
+    }}
+  ]
+}}
+
+Rules:
+- Coordinates are PERCENTAGES of the full image (0-100)
+- Map EVERY clickable element: buttons, cards, tabs, nav items, menu items
+- Food/product cards are clickable elements — include each one
+- Include navigation bar items at the bottom
+- Include the search icon, grid icon, scan button
+- Include the Pay button
+- Include Check/Actions/Guest tabs
+- Return ONLY valid JSON"""
+
+
+def build_scanner_html(img_data_url: str, elements: list, target_w: int, target_h: int) -> str:
+    """Build HTML that uses the screenshot as visual + interactive overlays."""
+    
+    hotspots = []
+    for el in elements:
+        x = el.get("x", 0)
+        y = el.get("y", 0)
+        w = el.get("w", 5)
+        h = el.get("h", 5)
+        label = el.get("label", "")
+        el_type = el.get("type", "button")
+        
+        # Style based on type
+        hover_bg = "rgba(255,255,255,0.15)"
+        border_radius = "8px"
+        if el_type == "nav-item":
+            hover_bg = "rgba(255,255,255,0.1)"
+        elif el_type == "card":
+            hover_bg = "rgba(255,255,255,0.12)"
+            border_radius = "12px"
+        elif el_type == "tab":
+            hover_bg = "rgba(0,0,0,0.05)"
+            border_radius = "4px"
+        
+        hotspots.append(f'''    <div class="hotspot" 
+      style="left:{x}%;top:{y}%;width:{w}%;height:{h}%;border-radius:{border_radius};"
+      data-label="{label}" data-type="{el_type}"
+      onclick="handleClick('{label}','{el_type}')"
+      title="{label}">
+    </div>''')
+    
+    hotspots_html = "\n".join(hotspots)
+    
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanned UI</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ 
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: #1a1a2e;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }}
+  .scanner-frame {{
+    position: relative;
+    width: {target_w}px; height: {target_h}px;
+    background-image: url('{img_data_url}');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+  }}
+  .hotspot {{
+    position: absolute;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    z-index: 2;
+  }}
+  .hotspot:hover {{
+    background: rgba(255,255,255,0.15);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.5);
+  }}
+  .hotspot:active {{
+    background: rgba(59,130,246,0.2);
+    transform: scale(0.98);
+  }}
+  .toast {{
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #f1f5f9; padding: 12px 24px;
+    border-radius: 10px; font-size: 14px; display: none; z-index: 100;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid #334155;
+  }}
+  .toast.show {{ display: block; animation: fadeIn 0.2s ease; }}
+  @keyframes fadeIn {{ from {{ opacity: 0; transform: translateX(-50%) translateY(10px); }} to {{ opacity: 1; transform: translateX(-50%) translateY(0); }} }}
+</style>
+</head>
+<body>
+  <div class="scanner-frame">
+{hotspots_html}
+  </div>
+  <div class="toast" id="toast"></div>
+  <script>
+    function handleClick(label, type) {{
+      const toast = document.getElementById('toast');
+      toast.textContent = `${{type}}: ${{label}}`;
+      toast.className = 'toast show';
+      setTimeout(() => toast.className = 'toast', 1500);
+    }}
+  </script>
+</body>
+</html>'''
+
+
+async def scanner_analyze(gemini_key: str, img_b64: str, img_type: str) -> list:
+    """Use Gemini to analyze UI structure for scanner mode."""
+    if not gemini_key:
+        return []
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as c:
+            r = await c.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{
+                        "parts": [
+                            {"inline_data": {"mime_type": img_type, "data": img_b64}},
+                            {"text": SCANNER_ANALYSIS_PROMPT}
+                        ]
+                    }],
+                    "generationConfig": {
+                        "maxOutputTokens": 8000,
+                        "temperature": 0.1,
+                        "responseMimeType": "application/json",
+                    },
+                }
+            )
+            if r.status_code == 200:
+                data = r.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if text.startswith("```json"): text = text[7:]
+                if text.startswith("```"): text = text[3:]
+                if text.endswith("```"): text = text[:-3]
+                parsed = json.loads(text.strip())
+                elements = parsed.get("elements", []) if isinstance(parsed, dict) else []
+                log.info(f"Scanner analysis found {len(elements)} interactive elements")
+                return elements
+            else:
+                log.warning(f"Scanner analysis failed: {r.status_code}")
+                return []
+    except Exception as e:
+        log.warning(f"Scanner analysis error: {e}")
+        return []
 
 def crop_detected_regions(img: Image.Image, regions: list, max_images: int = 20) -> list:
     """Crop each detected region from the screenshot, return list with URLs and base64."""
@@ -451,6 +622,41 @@ async def generate_design(
         'copy this', 'replicate this', 'clone this', 'copy', 'replicate',
         'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'
     )
+    
+    # ═══ TRUE SCANNER MODE ═══
+    # For simple "scan this" commands with a screenshot: use the screenshot AS the visual
+    if has_image and pil_img and is_simple:
+        log.info("TRUE SCANNER MODE: Using screenshot as visual + interactive overlay")
+        
+        # Create compressed JPEG data URL of the screenshot
+        buf = io.BytesIO()
+        # Resize if needed to keep reasonable size
+        scan_img = pil_img.copy()
+        max_dim = 1600
+        if scan_img.width > max_dim or scan_img.height > max_dim:
+            scan_img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        scan_img.save(buf, format="JPEG", quality=88, optimize=True)
+        scan_b64 = base64.b64encode(buf.getvalue()).decode()
+        scan_data_url = f"data:image/jpeg;base64,{scan_b64}"
+        
+        w, h = DEVICE_SIZES.get(device, (1024, 768))
+        
+        # Get interactive elements from Gemini
+        detection_key = gemini_key or (api_key if provider == "gemini" else "")
+        elements = await scanner_analyze(detection_key, image_base64, image_media_type)
+        
+        # Build the scanner HTML
+        html = build_scanner_html(scan_data_url, elements, w, h)
+        
+        return {
+            "html": html,
+            "provider": "scanner",
+            "model": "true-scanner + gemini-analysis",
+            "images_detected": len(elements),
+            "detection_used": True,
+            "detection_method": "true-scanner",
+            "usage": {"mode": "scanner", "elements": len(elements)},
+        }
     
     if has_image:
         img_count = len(extracted_images)

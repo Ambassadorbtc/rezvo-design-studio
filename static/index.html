@@ -522,8 +522,19 @@ async function handleGenerate() {
     state.selectedScreen = project.screens.length - 1;
     const dev = DEVICES[state.device];
     const imgCount = data.images_detected || 0;
-    const detectionNote = imgCount > 0 ? ` · 📸 ${imgCount} images extracted` : (data.detection_used ? ' · No photos detected' : ' · Add Gemini key for image extraction');
-    addChatMessage('assistant', `✅ Scanned via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})${detectionNote}`);
+    const method = data.detection_method || '';
+    let detectionNote;
+    if (method === 'true-scanner') {
+      detectionNote = ` · 📸 True Scanner · ${imgCount} interactive elements mapped`;
+    } else if (imgCount > 0) {
+      detectionNote = ` · 📸 ${imgCount} images extracted`;
+    } else if (data.detection_used) {
+      detectionNote = ' · No photos detected';
+    } else {
+      detectionNote = ' · Add Gemini key for image extraction';
+    }
+    const provLabel = data.provider === 'scanner' ? 'Scanner' : pMeta.label;
+    addChatMessage('assistant', `✅ Scanned via ${provLabel} — ${dev.label} (${dev.w}×${dev.h})${detectionNote}`);
   } catch(e) {
     clearInterval(progressTimer);
     addChatMessage('assistant', `❌ Error: ${e.message}`);
