@@ -618,14 +618,22 @@ async def generate_design(
     image_manifest = build_image_manifest(extracted_images)
     system = SYSTEM_PROMPT.format(w=w, h=h, device=device, image_manifest=image_manifest)
     
-    is_simple = not prompt or prompt.lower().strip() in (
-        'copy this', 'replicate this', 'clone this', 'copy', 'replicate',
-        'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'
-    )
+    is_scan = False
+    if not prompt:
+        is_scan = True
+    else:
+        p = prompt.lower().strip().rstrip('.')
+        # Exact matches
+        if p in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate',
+                 'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
+            is_scan = True
+        # Fuzzy matches — if the prompt is basically saying "scan/copy this exactly"
+        elif any(kw in p for kw in ('scan', 'copy this', 'pixel perfect', 'pixel-perfect', 'no placeholder', 'no place holder', 'no guessing', 'exactly', 'replicate', 'clone')):
+            is_scan = True
     
     # ═══ TRUE SCANNER MODE ═══
-    # For simple "scan this" commands with a screenshot: use the screenshot AS the visual
-    if has_image and pil_img and is_simple:
+    # For scan commands with a screenshot: use the screenshot AS the visual
+    if has_image and pil_img and is_scan:
         log.info("TRUE SCANNER MODE: Using screenshot as visual + interactive overlay")
         
         # Create compressed JPEG data URL of the screenshot
@@ -662,7 +670,7 @@ async def generate_design(
         img_count = len(extracted_images)
         img_note = f"\n\n{img_count} photographs have been extracted from the screenshot and are listed in the system prompt. Use the provided <img> tags with data URLs for each one. Position them exactly where they appear in the original." if img_count > 0 else ""
         
-        if is_simple:
+        if not prompt:
             user_text = f"""SCAN this screenshot into pixel-perfect HTML.
 Target: {device} ({w}x{h}px){img_note}
 
