@@ -321,11 +321,10 @@ let state = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-  try { state.projects = JSON.parse(localStorage.getItem('rezvo_projects') || '[]'); } catch(e) {}
+  // Keys stay in localStorage (tiny)
   try { state.keys = JSON.parse(localStorage.getItem('rezvo_keys') || '{}'); } catch(e) {}
   state.keys = { anthropic: '', xai: '', gemini: '', openai: '', ...state.keys };
   state.activeProvider = localStorage.getItem('rezvo_provider') || 'anthropic';
-  // Auto-select first available provider
   if (!state.keys[state.activeProvider]) {
     const avail = Object.keys(state.keys).find(k => state.keys[k]);
     if (avail) state.activeProvider = avail;
@@ -334,9 +333,56 @@ document.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
   updateSendBtn();
   document.getElementById('promptInput')?.addEventListener('input', updateSendBtn);
+  
+  // Load projects from IndexedDB (handles large base64 scans)
+  openProjectsDB().then(async () => {
+    const saved = await loadProjectsDB();
+    if (saved.length > 0) {
+      state.projects = saved;
+    } else {
+      // Migrate from localStorage if any
+      try {
+        const old = JSON.parse(localStorage.getItem('rezvo_projects') || '[]');
+        if (old.length > 0) { state.projects = old; await saveProjectsDB(); localStorage.removeItem('rezvo_projects'); }
+      } catch(e) {}
+    }
+    if (state.projects.length > 0) { state.activeProject = 0; }
+    renderDashboard();
+  });
 });
 
-function persist() { localStorage.setItem('rezvo_projects', JSON.stringify(state.projects)); }
+// ═══ IndexedDB — handles multi-MB scanned HTML that localStorage can't ═══
+let _projDB = null;
+function openProjectsDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('rezvo_studio', 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore('projects', { keyPath: '_idx' }); };
+    req.onsuccess = (e) => { _projDB = e.target.result; resolve(); };
+    req.onerror = (e) => reject(e);
+  });
+}
+function loadProjectsDB() {
+  return new Promise((resolve) => {
+    try {
+      const tx = _projDB.transaction('projects', 'readonly');
+      const req = tx.objectStore('projects').get('all');
+      req.onsuccess = () => resolve(req.result?.data || []);
+      req.onerror = () => resolve([]);
+    } catch(e) { resolve([]); }
+  });
+}
+function saveProjectsDB() {
+  return new Promise((resolve) => {
+    try {
+      const tx = _projDB.transaction('projects', 'readwrite');
+      tx.objectStore('projects').put({ _idx: 'all', data: state.projects });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch(e) { resolve(); }
+  });
+}
+
+function persist() { saveProjectsDB(); }
 function persistKeys() { localStorage.setItem('rezvo_keys', JSON.stringify(state.keys)); localStorage.setItem('rezvo_provider', state.activeProvider); }
 
 function updateProviderBadge() {
