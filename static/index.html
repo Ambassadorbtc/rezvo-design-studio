@@ -265,6 +265,7 @@
     </div>
     <div class="key-row">
       <div class="key-header"><div class="dot" style="background:#fbbf24;"></div><label>Google Gemini</label></div>
+      <div style="font-size:11px;color:var(--accent);margin-bottom:6px;">⚡ Also used for image detection — add this key to extract real photos from screenshots</div>
       <input type="password" id="keyGemini" placeholder="AIza...">
     </div>
     <div class="key-row">
@@ -477,16 +478,15 @@ async function handleGenerate() {
   renderCanvas(); renderChatMessages();
 
   const progressTimer = setInterval(() => {
-    state.progress = Math.min(state.progress + Math.random() * 6, 92);
+    state.progress = Math.min(state.progress + Math.random() * 4, 92);
+    const step = state.progress < 20 ? '🔍 Detecting images...' : state.progress < 40 ? '✂️ Extracting pixels...' : '🎨 Generating HTML...';
     renderChatMessages();
-    // Only update progress bar elements, don't rebuild entire canvas
     const progFill = document.querySelector('.wireframe-placeholder .progress-bar .fill');
-    const progSvg = document.querySelector('.wireframe-placeholder svg rect:last-of-type');
     const progLabel = document.querySelector('.wireframe-placeholder .label');
     if (progFill) progFill.style.width = state.progress + '%';
     if (progLabel) {
       const prov = PROVIDER_META[state.activeProvider];
-      progLabel.innerHTML = `<div class="pulse-dot" style="background:${prov.color}"></div> ${prov.label} generating... ${Math.round(state.progress)}%`;
+      progLabel.innerHTML = `<div class="pulse-dot" style="background:${prov.color}"></div> ${step} ${Math.round(state.progress)}%`;
     }
   }, 600);
 
@@ -500,6 +500,8 @@ async function handleGenerate() {
       formData.append('image_base64', state.uploadData.base64);
       formData.append('image_media_type', state.uploadData.mediaType);
       formData.append('image_url', state.uploadData.publicUrl || '');
+      // Pass Gemini key for image detection (always, regardless of main provider)
+      if (state.keys.gemini) formData.append('gemini_key', state.keys.gemini);
     }
     const resp = await fetch('/api/generate', { method: 'POST', body: formData });
     clearInterval(progressTimer); state.progress = 100;
@@ -519,8 +521,9 @@ async function handleGenerate() {
     persist();
     state.selectedScreen = project.screens.length - 1;
     const dev = DEVICES[state.device];
-    const cropInfo = data.crops_processed ? ` · ${data.crops_processed} images extracted` : '';
-    addChatMessage('assistant', `✅ Scanned via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})${cropInfo}`);
+    const imgCount = data.images_detected || 0;
+    const detectionNote = imgCount > 0 ? ` · 📸 ${imgCount} images extracted` : (data.detection_used ? ' · No photos detected' : ' · Add Gemini key for image extraction');
+    addChatMessage('assistant', `✅ Scanned via ${pMeta.label} — ${dev.label} (${dev.w}×${dev.h})${detectionNote}`);
   } catch(e) {
     clearInterval(progressTimer);
     addChatMessage('assistant', `❌ Error: ${e.message}`);
