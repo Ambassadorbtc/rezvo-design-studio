@@ -590,6 +590,8 @@ async function handleGenerate() {
     let detectionNote;
     if (method === 'true-scanner') {
       detectionNote = ` · 📸 True Scanner · ${imgCount} interactive elements mapped`;
+    } else if (method === 'reskin') {
+      detectionNote = ` · 🎨 Reskin Mode · ${imgCount} images preserved`;
     } else if (imgCount > 0) {
       detectionNote = ` · 📸 ${imgCount} images extracted`;
     } else if (data.detection_used) {

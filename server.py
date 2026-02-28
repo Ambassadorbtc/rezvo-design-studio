@@ -621,22 +621,25 @@ async def generate_design(
     system = SYSTEM_PROMPT.format(w=w, h=h, device=device, image_manifest=image_manifest)
     
     is_scan = False
+    is_reskin = False
     if not prompt:
         is_scan = True
     else:
         p = prompt.lower().strip().rstrip('.')
         # Only trigger scanner for SHORT commands that clearly mean "copy this exactly"
-        # Long prompts with design instructions should go to AI code generation
         if len(p) < 80:
-            # Exact matches
             if p in ('copy this', 'replicate this', 'clone this', 'copy', 'replicate',
                      'clone', 'recreate this', 'rebuild this', 'make this', 'scan this', 'scan'):
                 is_scan = True
-            # Fuzzy matches — only for short prompts
             elif any(kw in p for kw in ('scan', 'copy this', 'pixel perfect', 'pixel-perfect', 
                                          'no placeholder', 'no place holder', 'no guessing', 
                                          'replicate', 'clone')):
                 is_scan = True
+        # RESKIN MODE — user wants to rebrand/redesign with their own style
+        if not is_scan and has_image and any(kw in p for kw in (
+            'reskin', 'rebrand', 'redesign', 'make it mine', 'my brand', 'rezvo',
+            'our brand', 'my style', 'restyle', 'change the brand', 'make this ours')):
+            is_reskin = True
     
     # ═══ TRUE SCANNER MODE ═══
     # For scan commands with a screenshot: use the screenshot AS the visual
@@ -686,6 +689,90 @@ async def generate_design(
             "scan_id": scan_id,
             "usage": {"mode": "scanner", "elements": len(elements)},
         }
+    
+    # ═══ RESKIN MODE ═══
+    # Scanner accuracy + AI branding changes
+    if has_image and pil_img and is_reskin:
+        log.info("RESKIN MODE: Scanner layout + AI brand transform")
+        
+        # Step 1: Get element positions from Gemini
+        detection_key = gemini_key or (api_key if provider == "gemini" else "")
+        elements = []
+        if detection_key:
+            elements = await scanner_analyze(detection_key, image_base64, image_media_type)
+        
+        # Step 2: Build layout map from element positions
+        layout_map = "DETECTED UI ELEMENTS WITH EXACT POSITIONS (percentages of full image):\n"
+        for el in elements:
+            layout_map += f"  - {el.get('type','element')}: \"{el.get('label','')}\" at x={el.get('x',0)}% y={el.get('y',0)}% width={el.get('w',5)}% height={el.get('h',5)}%\n"
+        
+        # Step 3: Extract photos
+        img_count = len(extracted_images)
+        
+        # Step 4: Build reskin prompt — layout is LOCKED, only branding changes
+        reskin_system = f"""You are a UI reskin engine. You take an existing UI layout and apply new branding WITHOUT changing the layout.
+
+TARGET: {w}x{h}px ({device})
+
+CRITICAL RULES:
+1. Output ONLY raw HTML. No markdown, no backticks, no explanation.
+2. Use Tailwind CSS: <script src="https://cdn.tailwindcss.com"></script>
+3. The layout structure MUST match the original screenshot EXACTLY — same grid, same positions, same proportions.
+4. You are ONLY changing: colors, fonts, brand name/text, and visual styling.
+5. DO NOT rearrange elements. DO NOT change the grid layout. DO NOT move things around.
+
+{layout_map}
+
+IMAGE HANDLING — CRITICAL:
+{build_image_manifest(extracted_images)}
+- Use EVERY extracted image with <img> tags and the provided data URLs
+- Position images in the SAME locations as the original
+- Use object-fit: cover with appropriate border-radius
+
+LAYOUT RULES:
+- Left section: category tiles in a grid (same number of rows/columns as original)
+- Middle section: food item cards with photos (same grid as original)
+- Right section: order/check panel (same width ratio as original)
+- Bottom: navigation bar (same items as original)
+- DO NOT stack everything vertically. Maintain the HORIZONTAL layout from the original.
+- The main layout is a HORIZONTAL split: ~60% menu | ~40% order panel"""
+
+        img_note = f"\n\n{img_count} photographs extracted from screenshot — use them all." if img_count > 0 else ""
+        
+        reskin_user = f"""{prompt}
+
+IMPORTANT: Keep the EXACT same layout structure as the original screenshot.
+Only change colors, fonts, and branding. Do not rearrange anything.
+{img_note}
+
+Output ONLY raw HTML."""
+
+        # Use the same code generation pipeline but with reskin prompt
+        messages = [{"role": "user", "content": []}]
+        messages[0]["content"].append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": image_media_type, "data": image_base64}
+        })
+        messages[0]["content"].append({"type": "text", "text": reskin_user})
+        
+        result = await call_provider(
+            provider=provider, api_key=api_key, system=reskin_system,
+            messages=messages, w=w, h=h
+        )
+        
+        # Post-process: embed base64 images
+        if extracted_images and result.get("html"):
+            html = result["html"]
+            for img in extracted_images:
+                if img.get("url") and img.get("data_url"):
+                    html = html.replace(img["url"], img["data_url"])
+            result["html"] = html
+        
+        result["detection_method"] = "reskin"
+        result["images_detected"] = img_count
+        result["detection_used"] = True
+        
+        return result
     
     if has_image:
         img_count = len(extracted_images)
